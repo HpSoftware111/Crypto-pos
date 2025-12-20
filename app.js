@@ -1,0 +1,345 @@
+// Crypto POS Application - Production Version
+class CryptoPOS {
+    constructor() {
+        this.currentMethod = null;
+        this.currentAmount = null;
+        this.paymentId = null;
+        this.paymentAddress = null;
+        this.paymentInterval = null;
+        this.apiBaseUrl = window.location.origin;
+        this.maxRetries = 30; // 1 minute of checking (30 * 2 seconds)
+        this.retryCount = 0;
+        this.init();
+    }
+
+    init() {
+        // Payment method buttons
+        document.querySelectorAll('.payment-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                this.selectPaymentMethod(e.currentTarget.dataset.method);
+            });
+        });
+
+        // Amount input
+        document.getElementById('generateBtn').addEventListener('click', () => {
+            this.generatePayment();
+        });
+
+        document.getElementById('backBtn').addEventListener('click', () => {
+            this.showMethodSelection();
+        });
+
+        document.getElementById('cancelBtn').addEventListener('click', () => {
+            this.cancelPayment();
+        });
+
+        document.getElementById('newPaymentBtn').addEventListener('click', () => {
+            this.reset();
+        });
+
+        document.getElementById('copyBtn').addEventListener('click', () => {
+            this.copyAddress();
+        });
+
+        // Enter key on amount input
+        document.getElementById('amountInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                this.generatePayment();
+            }
+        });
+
+        // Check server health on load
+        this.checkServerHealth();
+    }
+
+    async checkServerHealth() {
+        try {
+            const response = await fetch(`${this.apiBaseUrl}/api/health`);
+            const data = await response.json();
+            console.log('Server status:', data);
+        } catch (error) {
+            console.error('Server health check failed:', error);
+            this.showError('Cannot connect to server. Please ensure the backend is running.');
+        }
+    }
+
+    selectPaymentMethod(method) {
+        this.currentMethod = method;
+        const methodNames = {
+            'usdt-avax': 'USDT (Avalanche)',
+            'btc': 'Bitcoin (BTC)'
+        };
+
+        document.getElementById('currencyDisplay').textContent = methodNames[method];
+        this.showAmountInput();
+    }
+
+    showMethodSelection() {
+        document.getElementById('methodSection').classList.remove('hidden');
+        document.getElementById('amountSection').classList.add('hidden');
+        document.getElementById('paymentSection').classList.add('hidden');
+        this.currentMethod = null;
+        this.clearErrors();
+    }
+
+    showAmountInput() {
+        document.getElementById('methodSection').classList.add('hidden');
+        document.getElementById('amountSection').classList.remove('hidden');
+        document.getElementById('paymentSection').classList.add('hidden');
+        document.getElementById('amountInput').focus();
+        this.clearErrors();
+    }
+
+    async generatePayment() {
+        const amount = parseFloat(document.getElementById('amountInput').value);
+
+        if (!amount || amount <= 0) {
+            this.showError('Please enter a valid amount');
+            return;
+        }
+
+        this.currentAmount = amount;
+        this.retryCount = 0;
+
+        try {
+            // Show loading state
+            this.setLoadingState(true);
+
+            // Create payment request via API
+            const response = await fetch(`${this.apiBaseUrl}/api/payment/create`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    method: this.currentMethod,
+                    amount: amount
+                })
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.error || 'Failed to create payment request');
+            }
+
+            const data = await response.json();
+            this.paymentId = data.paymentId;
+            this.paymentAddress = data.address;
+
+            this.displayPayment(data);
+            this.startPaymentMonitoring();
+        } catch (error) {
+            console.error('Error creating payment:', error);
+            this.showError(error.message || 'Failed to create payment request. Please try again.');
+            this.setLoadingState(false);
+        }
+    }
+
+    displayPayment(data) {
+        const methodNames = {
+            'usdt-avax': 'USDT (Avalanche)',
+            'btc': 'Bitcoin (BTC)'
+        };
+
+        document.getElementById('displayAmount').textContent =
+            `${this.currentAmount.toFixed(2)} ${this.currentMethod === 'btc' ? 'BTC' : 'USDT'}`;
+        document.getElementById('displayMethod').textContent = methodNames[this.currentMethod];
+        document.getElementById('paymentAddress').textContent = this.paymentAddress;
+
+        // Generate QR code - use qrData if available, otherwise use address
+        const qrData = data.qrData || this.paymentAddress;
+        const qrCanvas = document.getElementById('qrCode');
+
+        QRCode.toCanvas(qrCanvas, qrData, {
+            width: 300,
+            margin: 2,
+            color: {
+                dark: '#000000',
+                light: '#FFFFFF'
+            }
+        }, (error) => {
+            if (error) {
+                console.error('QR Code generation error:', error);
+                this.showError('Failed to generate QR code');
+            }
+        });
+
+        // Show payment section
+        document.getElementById('methodSection').classList.add('hidden');
+        document.getElementById('amountSection').classList.add('hidden');
+        document.getElementById('paymentSection').classList.remove('hidden');
+
+        // Reset status
+        const statusEl = document.getElementById('paymentStatus');
+        statusEl.className = 'status';
+        statusEl.innerHTML = '<span class="status-icon">⏳</span><span class="status-text">Waiting for payment...</span>';
+
+        this.setLoadingState(false);
+    }
+
+    startPaymentMonitoring() {
+        // Clear any existing interval
+        if (this.paymentInterval) {
+            clearInterval(this.paymentInterval);
+        }
+
+        // Check payment status every 2 seconds
+        this.paymentInterval = setInterval(() => {
+            this.checkPayment();
+        }, 2000);
+    }
+
+    async checkPayment() {
+        if (!this.paymentId) {
+            this.stopMonitoring();
+            return;
+        }
+
+        // Stop checking after max retries
+        if (this.retryCount >= this.maxRetries) {
+            this.stopMonitoring();
+            this.showError('Payment timeout. Please create a new payment request.');
+            return;
+        }
+
+        this.retryCount++;
+
+        try {
+            const response = await fetch(`${this.apiBaseUrl}/api/payment/status/${this.paymentId}`, {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            if (!response.ok) {
+                throw new Error('Failed to check payment status');
+            }
+
+            const data = await response.json();
+
+            if (data.confirmed) {
+                this.confirmPayment(data);
+            } else {
+                // Update status with retry count
+                const statusEl = document.getElementById('paymentStatus');
+                const minutes = Math.floor(this.retryCount * 2 / 60);
+                const seconds = (this.retryCount * 2) % 60;
+                statusEl.innerHTML = `<span class="status-icon">⏳</span><span class="status-text">Waiting for payment... (${minutes}:${seconds.toString().padStart(2, '0')})</span>`;
+            }
+        } catch (error) {
+            console.error('Error checking payment:', error);
+            // Don't show error on every failed check, only log it
+            // The retry mechanism will handle temporary network issues
+        }
+    }
+
+    confirmPayment(paymentData) {
+        this.stopMonitoring();
+
+        const statusEl = document.getElementById('paymentStatus');
+        statusEl.className = 'status success';
+
+        let message = 'Payment confirmed!';
+        if (paymentData.txHash) {
+            message += `\nTransaction: ${paymentData.txHash.substring(0, 16)}...`;
+        }
+
+        statusEl.innerHTML = `<span class="status-icon">✅</span><span class="status-text">${message}</span>`;
+
+        // Show success notification
+        setTimeout(() => {
+            const txInfo = paymentData.txHash ?
+                `\n\nTransaction Hash:\n${paymentData.txHash}` : '';
+            alert(`✅ Payment of ${this.currentAmount} ${this.currentMethod === 'btc' ? 'BTC' : 'USDT'} confirmed!${txInfo}`);
+        }, 500);
+    }
+
+    stopMonitoring() {
+        if (this.paymentInterval) {
+            clearInterval(this.paymentInterval);
+            this.paymentInterval = null;
+        }
+    }
+
+    cancelPayment() {
+        this.stopMonitoring();
+        this.reset();
+    }
+
+    reset() {
+        this.stopMonitoring();
+
+        this.currentMethod = null;
+        this.currentAmount = null;
+        this.paymentId = null;
+        this.paymentAddress = null;
+        this.retryCount = 0;
+        document.getElementById('amountInput').value = '';
+        this.showMethodSelection();
+    }
+
+    copyAddress() {
+        if (!this.paymentAddress) return;
+
+        navigator.clipboard.writeText(this.paymentAddress).then(() => {
+            const copyBtn = document.getElementById('copyBtn');
+            const originalText = copyBtn.textContent;
+            copyBtn.textContent = '✓';
+            copyBtn.style.background = '#28a745';
+            setTimeout(() => {
+                copyBtn.textContent = originalText;
+                copyBtn.style.background = '#667eea';
+            }, 2000);
+        }).catch(err => {
+            console.error('Failed to copy:', err);
+            this.showError('Failed to copy address to clipboard');
+        });
+    }
+
+    showError(message) {
+        // Remove any existing error messages
+        this.clearErrors();
+
+        // Create error element
+        const errorDiv = document.createElement('div');
+        errorDiv.className = 'error-message';
+        errorDiv.textContent = message;
+        errorDiv.style.cssText = `
+            background: #f8d7da;
+            color: #721c24;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            border: 2px solid #f5c6cb;
+            font-weight: 500;
+        `;
+
+        // Insert error at the top of the current section
+        const currentSection = document.querySelector('.section:not(.hidden)');
+        if (currentSection) {
+            currentSection.insertBefore(errorDiv, currentSection.firstChild);
+        }
+    }
+
+    clearErrors() {
+        const errors = document.querySelectorAll('.error-message');
+        errors.forEach(error => error.remove());
+    }
+
+    setLoadingState(loading) {
+        const generateBtn = document.getElementById('generateBtn');
+        if (loading) {
+            generateBtn.disabled = true;
+            generateBtn.textContent = 'Generating...';
+        } else {
+            generateBtn.disabled = false;
+            generateBtn.textContent = 'Generate Payment';
+        }
+    }
+}
+
+// Initialize the POS when DOM is loaded
+document.addEventListener('DOMContentLoaded', () => {
+    new CryptoPOS();
+});

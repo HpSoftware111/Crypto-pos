@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Crypto POS - Point of Sale</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>💰 Crypto POS</h1>
+            <p class="subtitle">Point of Sale System</p>
+        </header>
+
+        <main>
+            <!-- Payment Method Selection -->
+            <div class="section" id="methodSection">
+                <h2>Select Payment Method</h2>
+                <div class="payment-methods">
+                    <button class="payment-btn" data-method="usdt-avax">
+                        <div class="coin-icon">🟢</div>
+                        <div class="coin-info">
+                            <div class="coin-name">USDT</div>
+                            <div class="coin-network">Avalanche</div>
+                        </div>
+                    </button>
+                    <button class="payment-btn" data-method="btc">
+                        <div class="coin-icon">🟠</div>
+                        <div class="coin-info">
+                            <div class="coin-name">Bitcoin</div>
+                            <div class="coin-network">BTC</div>
+                        </div>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Amount Input -->
+            <div class="section hidden" id="amountSection">
+                <h2>Enter Amount</h2>
+                <div class="amount-input-container">
+                    <input type="number" id="amountInput" placeholder="0.00" step="0.01" min="0.01">
+                    <div class="currency-display" id="currencyDisplay"></div>
+                </div>
+                <div class="button-group">
+                    <button class="btn btn-secondary" id="backBtn">Back</button>
+                    <button class="btn btn-primary" id="generateBtn">Generate Payment</button>
+                </div>
+            </div>
+
+            <!-- Payment QR Code -->
+            <div class="section hidden" id="paymentSection">
+                <h2>Payment Request</h2>
+                <div class="payment-info">
+                    <div class="amount-display">
+                        <span class="label">Amount:</span>
+                        <span class="value" id="displayAmount"></span>
+                    </div>
+                    <div class="method-display">
+                        <span class="label">Method:</span>
+                        <span class="value" id="displayMethod"></span>
+                    </div>
+                </div>
+                <div class="qr-container">
+                    <canvas id="qrCode"></canvas>
+                </div>
+                <div class="address-container">
+                    <label>Payment Address:</label>
+                    <div class="address-display">
+                        <code id="paymentAddress"></code>
+                        <button class="copy-btn" id="copyBtn" title="Copy address">📋</button>
+                    </div>
+                </div>
+                <div class="status-container">
+                    <div class="status" id="paymentStatus">
+                        <span class="status-icon">⏳</span>
+                        <span class="status-text">Waiting for payment...</span>
+                    </div>
+                </div>
+                <div class="button-group">
+                    <button class="btn btn-secondary" id="cancelBtn">Cancel</button>
+                    <button class="btn btn-primary" id="newPaymentBtn">New Payment</button>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
+
