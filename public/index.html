@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Crypto POS - Point of Sale</title>
     <link rel="stylesheet" href="styles.css">
-    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
 </head>
 <body>
     <div class="container">
@@ -86,6 +85,37 @@
         </main>
     </div>
 
+    <!-- Try to load QRCode library, but use server-side fallback if it fails -->
+    <script>
+        // Try multiple CDNs
+        const cdnUrls = [
+            'https://cdnjs.cloudflare.com/ajax/libs/qrcode/1.5.3/qrcode.min.js',
+            'https://unpkg.com/qrcode@1.5.3/build/qrcode.min.js',
+            'https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js'
+        ];
+        
+        let cdnIndex = 0;
+        function loadQRCode() {
+            if (cdnIndex >= cdnUrls.length) {
+                console.warn('All QRCode CDNs failed. Will use server-side QR code generation.');
+                window.QRCode = null;
+                return;
+            }
+            
+            const script = document.createElement('script');
+            script.src = cdnUrls[cdnIndex];
+            script.onload = function() {
+                console.log('QRCode library loaded from:', cdnUrls[cdnIndex]);
+            };
+            script.onerror = function() {
+                console.warn('CDN failed:', cdnUrls[cdnIndex]);
+                cdnIndex++;
+                loadQRCode();
+            };
+            document.head.appendChild(script);
+        }
+        loadQRCode();
+    </script>
     <script src="app.js"></script>
 </body>
 </html>

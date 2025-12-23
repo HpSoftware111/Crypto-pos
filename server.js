@@ -269,6 +269,32 @@ function generateQRData(method, address, amount) {
     return address;
 }
 
+// Generate QR code image (server-side fallback)
+app.get('/api/qrcode/:data', async (req, res) => {
+    try {
+        const { data } = req.params;
+        const decodedData = decodeURIComponent(data);
+        // Use a QR code API service as fallback (free, no key required)
+        const encodedData = encodeURIComponent(decodedData);
+        const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodedData}`;
+        
+        // Proxy the QR code image
+        const response = await axios.get(qrUrl, {
+            responseType: 'arraybuffer',
+            timeout: 10000
+        });
+        
+        res.set({
+            'Content-Type': 'image/png',
+            'Cache-Control': 'public, max-age=3600'
+        });
+        res.send(response.data);
+    } catch (error) {
+        console.error('QR code generation error:', error);
+        res.status(500).json({ error: 'Failed to generate QR code' });
+    }
+});
+
 // Cleanup old payments
 function cleanupOldPayments() {
     const oneHourAgo = Date.now() - (60 * 60 * 1000);

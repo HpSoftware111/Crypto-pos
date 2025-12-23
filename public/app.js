@@ -92,7 +92,7 @@ class CryptoPOS {
 
     async generatePayment() {
         const amount = parseFloat(document.getElementById('amountInput').value);
-        
+
         if (!amount || amount <= 0) {
             this.showError('Please enter a valid amount');
             return;
@@ -141,33 +141,72 @@ class CryptoPOS {
             'btc': 'Bitcoin (BTC)'
         };
 
-        document.getElementById('displayAmount').textContent = 
+        // Show payment section FIRST so elements are available
+        document.getElementById('methodSection').classList.add('hidden');
+        document.getElementById('amountSection').classList.add('hidden');
+        document.getElementById('paymentSection').classList.remove('hidden');
+
+        // Update payment info
+        document.getElementById('displayAmount').textContent =
             `${this.currentAmount.toFixed(2)} ${this.currentMethod === 'btc' ? 'BTC' : 'USDT'}`;
         document.getElementById('displayMethod').textContent = methodNames[this.currentMethod];
         document.getElementById('paymentAddress').textContent = this.paymentAddress;
 
         // Generate QR code - use qrData if available, otherwise use address
         const qrData = data.qrData || this.paymentAddress;
-        const qrCanvas = document.getElementById('qrCode');
-        
-        QRCode.toCanvas(qrCanvas, qrData, {
-            width: 300,
-            margin: 2,
-            color: {
-                dark: '#000000',
-                light: '#FFFFFF'
-            }
-        }, (error) => {
-            if (error) {
-                console.error('QR Code generation error:', error);
-                this.showError('Failed to generate QR code');
-            }
-        });
 
-        // Show payment section
-        document.getElementById('methodSection').classList.add('hidden');
-        document.getElementById('amountSection').classList.add('hidden');
-        document.getElementById('paymentSection').classList.remove('hidden');
+        // Get container element directly (more reliable)
+        const qrContainer = document.querySelector('.qr-container');
+        if (!qrContainer) {
+            console.error('QR container not found');
+            this.setLoadingState(false);
+            return;
+        }
+
+        // Get canvas element (may be null if using server-side)
+        const qrCanvas = document.getElementById('qrCode');
+
+        // Function to use server-side QR code generation as fallback
+        const useServerSideQR = () => {
+            const encodedData = encodeURIComponent(qrData);
+            const qrImageUrl = `${this.apiBaseUrl}/api/qrcode/${encodedData}`;
+            qrContainer.innerHTML = `
+                <img src="${qrImageUrl}" 
+                     alt="QR Code" 
+                     style="max-width: 100%; height: auto; border-radius: 10px;"
+                     onerror="this.parentElement.innerHTML='<div style=\\'padding: 20px; text-align: center; background: #f8f9fa; border-radius: 10px;\\'><p style=\\'margin-bottom: 10px; color: #666;\\'>QR Code unavailable</p><p style=\\'font-size: 0.9em; color: #999;\\'>Please use the payment address below</p></div>'">
+            `;
+        };
+
+        // Check if QRCode library is loaded and canvas exists
+        if (typeof QRCode === 'undefined' || QRCode === null) {
+            console.warn('QRCode library not loaded, using server-side generation');
+            useServerSideQR();
+        } else if (!qrCanvas) {
+            console.warn('Canvas element not found, using server-side generation');
+            useServerSideQR();
+        } else {
+            try {
+                QRCode.toCanvas(qrCanvas, qrData, {
+                    width: 300,
+                    margin: 2,
+                    color: {
+                        dark: '#000000',
+                        light: '#FFFFFF'
+                    }
+                }, (error) => {
+                    if (error) {
+                        console.error('QR Code generation error:', error);
+                        console.warn('Falling back to server-side QR code generation');
+                        useServerSideQR();
+                    }
+                });
+            } catch (error) {
+                console.error('QRCode error:', error);
+                console.warn('Falling back to server-side QR code generation');
+                useServerSideQR();
+            }
+        }
 
         // Reset status
         const statusEl = document.getElementById('paymentStatus');
@@ -239,17 +278,17 @@ class CryptoPOS {
 
         const statusEl = document.getElementById('paymentStatus');
         statusEl.className = 'status success';
-        
+
         let message = 'Payment confirmed!';
         if (paymentData.txHash) {
             message += `\nTransaction: ${paymentData.txHash.substring(0, 16)}...`;
         }
-        
+
         statusEl.innerHTML = `<span class="status-icon">✅</span><span class="status-text">${message}</span>`;
 
         // Show success notification
         setTimeout(() => {
-            const txInfo = paymentData.txHash ? 
+            const txInfo = paymentData.txHash ?
                 `\n\nTransaction Hash:\n${paymentData.txHash}` : '';
             alert(`✅ Payment of ${this.currentAmount} ${this.currentMethod === 'btc' ? 'BTC' : 'USDT'} confirmed!${txInfo}`);
         }, 500);
@@ -341,5 +380,13 @@ class CryptoPOS {
 
 // Initialize the POS when DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
+    // Check if QRCode library is loaded (with a small delay to allow scripts to load)
+    setTimeout(() => {
+        if (typeof QRCode === 'undefined' || QRCode === null) {
+            console.warn('⚠️ QRCode library not loaded. QR code generation will not work.');
+            console.warn('Please check your internet connection or CDN availability.');
+        }
+    }, 1000);
+
     new CryptoPOS();
 });
