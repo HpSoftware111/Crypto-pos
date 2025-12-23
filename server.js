@@ -2,10 +2,9 @@ const express = require('express');
 const cors = require('cors');
 const axios = require('axios');
 const path = require('path');
-require('dotenv').config();
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = 3000;
 
 // Middleware
 app.use(cors());
@@ -15,35 +14,104 @@ app.use(express.static('public'));
 // Store active payment requests (in production, use Redis or database)
 const activePayments = new Map();
 
-// Configuration
-const CONFIG = {
+// Status-based configuration (replaces .env file)
+const STATUS = {
     BTC: {
-        walletAddress: process.env.BTC_WALLET_ADDRESS || '',
+        walletAddress: 'bc1qh5n4uall8hqeshtlklp3p2k02dz7zj2y96xkva',
         apiUrl: 'https://blockstream.info/api',
         confirmationsRequired: 1
     },
     AVALANCHE: {
-        walletAddress: process.env.AVALANCHE_WALLET_ADDRESS || '',
+        walletAddress: '0x0029B302c6a0858b5648302dA5F4b24b67fBb364',
         apiUrl: 'https://api.snowtrace.io/api',
-        apiKey: process.env.SNOWTRACE_API_KEY || '',
+        apiKey: 'rs_ce1e170ba51f9f9bbe4ce524',
         confirmationsRequired: 1,
         // USDT contract address on Avalanche C-Chain
         usdtContractAddress: '0x9702230A8Ea53601f5cD2dc00fDBc13d4dF4A8c7' // USDT.e on Avalanche
     }
 };
 
+// Configuration getter (for backward compatibility)
+const CONFIG = STATUS;
+
+// Get status/configuration
+app.get('/api/status', (req, res) => {
+    res.json({
+        status: 'ok',
+        config: {
+            btc: {
+                walletAddress: STATUS.BTC.walletAddress || null,
+                configured: !!STATUS.BTC.walletAddress
+            },
+            avalanche: {
+                walletAddress: STATUS.AVALANCHE.walletAddress || null,
+                apiKey: STATUS.AVALANCHE.apiKey || null,
+                configured: !!STATUS.AVALANCHE.walletAddress
+            }
+        }
+    });
+});
+
+// Set BTC wallet address
+app.post('/api/status/btc', (req, res) => {
+    try {
+        const { walletAddress } = req.body;
+        if (!walletAddress || typeof walletAddress !== 'string') {
+            return res.status(400).json({ error: 'Invalid wallet address' });
+        }
+        STATUS.BTC.walletAddress = walletAddress.trim();
+        console.log('✅ BTC wallet address updated');
+        res.json({
+            status: 'ok',
+            message: 'BTC wallet address updated',
+            walletAddress: STATUS.BTC.walletAddress
+        });
+    } catch (error) {
+        console.error('Error setting BTC wallet:', error);
+        res.status(500).json({ error: 'Failed to update BTC wallet address' });
+    }
+});
+
+// Set Avalanche wallet address
+app.post('/api/status/avalanche', (req, res) => {
+    try {
+        const { walletAddress, apiKey } = req.body;
+        if (!walletAddress || typeof walletAddress !== 'string') {
+            return res.status(400).json({ error: 'Invalid wallet address' });
+        }
+        STATUS.AVALANCHE.walletAddress = walletAddress.trim();
+        if (apiKey && typeof apiKey === 'string') {
+            STATUS.AVALANCHE.apiKey = apiKey.trim();
+        }
+        console.log('✅ Avalanche wallet address updated');
+        res.json({
+            status: 'ok',
+            message: 'Avalanche wallet address updated',
+            walletAddress: STATUS.AVALANCHE.walletAddress,
+            apiKeySet: !!STATUS.AVALANCHE.apiKey
+        });
+    } catch (error) {
+        console.error('Error setting Avalanche wallet:', error);
+        res.status(500).json({ error: 'Failed to update Avalanche wallet address' });
+    }
+});
+
 // Validate configuration
 function validateConfig() {
     const errors = [];
-    if (!CONFIG.BTC.walletAddress) {
-        errors.push('BTC_WALLET_ADDRESS is not set');
+    if (!STATUS.BTC.walletAddress) {
+        errors.push('BTC wallet address not set');
     }
-    if (!CONFIG.AVALANCHE.walletAddress) {
-        errors.push('AVALANCHE_WALLET_ADDRESS is not set');
+    if (!STATUS.AVALANCHE.walletAddress) {
+        errors.push('Avalanche wallet address not set');
     }
     if (errors.length > 0) {
         console.warn('⚠️  Configuration warnings:', errors.join(', '));
-        console.warn('⚠️  Please set wallet addresses in .env file');
+        console.warn('⚠️  Use API endpoints to set wallet addresses:');
+        console.warn('   POST /api/status/btc - Set BTC wallet address');
+        console.warn('   POST /api/status/avalanche - Set Avalanche wallet address');
+    } else {
+        console.log('✅ All wallet addresses configured');
     }
 }
 
@@ -73,8 +141,9 @@ app.post('/api/payment/create', async (req, res) => {
         }
 
         if (!walletAddress) {
-            return res.status(500).json({ 
-                error: `Wallet address not configured for ${method}. Please set in .env file.` 
+            return res.status(500).json({
+                error: `Wallet address not configured for ${method}. Please set using API endpoint.`,
+                endpoint: method === 'btc' ? 'POST /api/status/btc' : 'POST /api/status/avalanche'
             });
         }
 
@@ -168,13 +237,13 @@ async function checkBTCPayment(payment) {
         );
 
         const transactions = response.data || [];
-        
+
         // Check recent transactions
         for (const tx of transactions.slice(0, 10)) {
             // Check if transaction is recent (within last hour)
             const txTime = tx.status.block_time * 1000;
             const paymentTime = new Date(payment.createdAt).getTime();
-            
+
             if (txTime >= paymentTime) {
                 // Calculate total received in this transaction
                 let totalReceived = 0;
@@ -227,14 +296,14 @@ async function checkUSDTPayment(payment) {
 
         for (const tx of transactions) {
             const txTime = parseInt(tx.timeStamp) * 1000;
-            
+
             // Check if transaction is recent and incoming
-            if (txTime >= paymentTime && 
+            if (txTime >= paymentTime &&
                 tx.to.toLowerCase() === payment.address.toLowerCase() &&
                 tx.tokenSymbol === 'USDT') {
-                
+
                 const receivedAmount = parseInt(tx.value) / 1000000; // Convert from 6 decimals
-                
+
                 // Check if amount matches (with small tolerance)
                 const tolerance = 0.01; // 0.01 USDT tolerance
                 if (Math.abs(receivedAmount - payment.amount) <= tolerance || receivedAmount >= payment.amount) {
@@ -277,13 +346,13 @@ app.get('/api/qrcode/:data', async (req, res) => {
         // Use a QR code API service as fallback (free, no key required)
         const encodedData = encodeURIComponent(decodedData);
         const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodedData}`;
-        
+
         // Proxy the QR code image
         const response = await axios.get(qrUrl, {
             responseType: 'arraybuffer',
             timeout: 10000
         });
-        
+
         res.set({
             'Content-Type': 'image/png',
             'Cache-Control': 'public, max-age=3600'
@@ -308,8 +377,8 @@ function cleanupOldPayments() {
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
-    res.json({ 
-        status: 'ok', 
+    res.json({
+        status: 'ok',
         timestamp: new Date().toISOString(),
         activePayments: activePayments.size
     });
