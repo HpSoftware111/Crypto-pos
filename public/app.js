@@ -7,7 +7,7 @@ class CryptoPOS {
         this.paymentAddress = null;
         this.paymentInterval = null;
         this.apiBaseUrl = window.location.origin;
-        this.maxRetries = 30; // 1 minute of checking (30 * 2 seconds)
+        this.maxRetries = 450; // 15 minutes of checking (450 * 2 seconds = 900 seconds)
         this.retryCount = 0;
         this.init();
     }
@@ -252,7 +252,8 @@ class CryptoPOS {
         // Stop checking after max retries
         if (this.retryCount >= this.maxRetries) {
             this.stopMonitoring();
-            this.showError('Payment timeout. Please create a new payment request.');
+            const timeoutMinutes = Math.floor(this.maxRetries * 2 / 60);
+            this.showError(`Payment timeout after ${timeoutMinutes} minutes. Please create a new payment request if payment was sent.`);
             return;
         }
 
@@ -275,15 +276,19 @@ class CryptoPOS {
             if (data.confirmed) {
                 this.confirmPayment(data);
             } else {
-                // Update status with retry count
+                // Update status with remaining time
                 const statusEl = document.getElementById('paymentStatus');
-                const minutes = Math.floor(this.retryCount * 2 / 60);
-                const seconds = (this.retryCount * 2) % 60;
+                const totalSeconds = this.maxRetries * 2;
+                const elapsedSeconds = this.retryCount * 2;
+                const remainingSeconds = totalSeconds - elapsedSeconds;
+                const remainingMinutes = Math.floor(remainingSeconds / 60);
+                const remainingSecs = remainingSeconds % 60;
+                
                 statusEl.innerHTML = `
                     <div class="status-icon-wrapper">
                         <div class="spinner"></div>
                     </div>
-                    <span class="status-text">Waiting for payment... (${minutes}:${seconds.toString().padStart(2, '0')})</span>
+                    <span class="status-text">Waiting for payment... (${remainingMinutes}:${remainingSecs.toString().padStart(2, '0')} remaining)</span>
                 `;
             }
         } catch (error) {
