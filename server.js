@@ -28,6 +28,14 @@ const STATUS = {
         confirmationsRequired: 1,
         // USDT contract address on Avalanche C-Chain
         usdtContractAddress: '0x9702230A8Ea53601f5cD2dc00fDBc13d4dF4A8c7' // USDT.e on Avalanche
+    },
+    AVAX: {
+        walletAddress: '0x91870B9c25C06E10Bcb88bdd0F7b43A13C2d7c41', // Client's mainnet address
+        apiUrl: 'https://api.snowtrace.io/api', // Mainnet
+        testnetApiUrl: 'https://api-testnet.snowtrace.io/api', // Testnet
+        apiKey: 'rs_ce1e170ba51f9f9bbe4ce524',
+        confirmationsRequired: 1,
+        network: 'mainnet' // 'mainnet' or 'testnet'
     }
 };
 
@@ -47,6 +55,11 @@ app.get('/api/status', (req, res) => {
                 walletAddress: STATUS.AVALANCHE.walletAddress || null,
                 apiKey: STATUS.AVALANCHE.apiKey || null,
                 configured: !!STATUS.AVALANCHE.walletAddress
+            },
+            avax: {
+                walletAddress: STATUS.AVAX.walletAddress || null,
+                network: STATUS.AVAX.network || 'mainnet',
+                configured: !!STATUS.AVAX.walletAddress
             }
         }
     });
@@ -96,6 +109,31 @@ app.post('/api/status/avalanche', (req, res) => {
     }
 });
 
+// Set AVAX wallet address
+app.post('/api/status/avax', (req, res) => {
+    try {
+        const { walletAddress, network } = req.body;
+        if (!walletAddress || typeof walletAddress !== 'string') {
+            return res.status(400).json({ error: 'Invalid wallet address' });
+        }
+        STATUS.AVAX.walletAddress = walletAddress.trim();
+        if (network && ['mainnet', 'testnet'].includes(network)) {
+            STATUS.AVAX.network = network;
+            console.log(`✅ AVAX network set to: ${network}`);
+        }
+        console.log('✅ AVAX wallet address updated');
+        res.json({
+            status: 'ok',
+            message: 'AVAX wallet address updated',
+            walletAddress: STATUS.AVAX.walletAddress,
+            network: STATUS.AVAX.network
+        });
+    } catch (error) {
+        console.error('Error setting AVAX wallet:', error);
+        res.status(500).json({ error: 'Failed to update AVAX wallet address' });
+    }
+});
+
 // Validate configuration
 function validateConfig() {
     const errors = [];
@@ -105,13 +143,18 @@ function validateConfig() {
     if (!STATUS.AVALANCHE.walletAddress) {
         errors.push('Avalanche wallet address not set');
     }
+    if (!STATUS.AVAX.walletAddress) {
+        errors.push('AVAX wallet address not set');
+    }
     if (errors.length > 0) {
         console.warn('⚠️  Configuration warnings:', errors.join(', '));
         console.warn('⚠️  Use API endpoints to set wallet addresses:');
         console.warn('   POST /api/status/btc - Set BTC wallet address');
         console.warn('   POST /api/status/avalanche - Set Avalanche wallet address');
+        console.warn('   POST /api/status/avax - Set AVAX wallet address');
     } else {
         console.log('✅ All wallet addresses configured');
+        console.log(`   AVAX Network: ${STATUS.AVAX.network}`);
     }
 }
 
@@ -121,7 +164,7 @@ app.post('/api/payment/create', async (req, res) => {
         const { method, amount } = req.body;
 
         // Validation
-        if (!method || !['btc', 'usdt-avax'].includes(method)) {
+        if (!method || !['btc', 'usdt-avax', 'avax'].includes(method)) {
             return res.status(400).json({ error: 'Invalid payment method' });
         }
 
@@ -138,12 +181,19 @@ app.post('/api/payment/create', async (req, res) => {
             walletAddress = CONFIG.BTC.walletAddress;
         } else if (method === 'usdt-avax') {
             walletAddress = CONFIG.AVALANCHE.walletAddress;
+        } else if (method === 'avax') {
+            walletAddress = CONFIG.AVAX.walletAddress;
         }
 
         if (!walletAddress) {
+            const endpointMap = {
+                'btc': 'POST /api/status/btc',
+                'usdt-avax': 'POST /api/status/avalanche',
+                'avax': 'POST /api/status/avax'
+            };
             return res.status(500).json({
                 error: `Wallet address not configured for ${method}. Please set using API endpoint.`,
-                endpoint: method === 'btc' ? 'POST /api/status/btc' : 'POST /api/status/avalanche'
+                endpoint: endpointMap[method] || 'Unknown'
             });
         }
 
@@ -221,6 +271,8 @@ async function checkBlockchainPayment(payment) {
             return await checkBTCPayment(payment);
         } else if (payment.method === 'usdt-avax') {
             return await checkUSDTPayment(payment);
+        } else if (payment.method === 'avax') {
+            return await checkAVAXPayment(payment);
         }
     } catch (error) {
         console.error(`Error checking ${payment.method} payment:`, error);
@@ -325,6 +377,60 @@ async function checkUSDTPayment(payment) {
     }
 }
 
+// Check AVAX (native) payment on Avalanche
+async function checkAVAXPayment(payment) {
+    try {
+        // Use testnet or mainnet API based on network setting
+        const apiUrl = STATUS.AVAX.network === 'testnet'
+            ? STATUS.AVAX.testnetApiUrl
+            : STATUS.AVAX.apiUrl;
+        const apiKey = CONFIG.AVAX.apiKey ? `&apikey=${CONFIG.AVAX.apiKey}` : '';
+
+        const response = await axios.get(
+            `${apiUrl}?module=account&action=txlist&address=${payment.address}&startblock=0&endblock=99999999&sort=desc${apiKey}`,
+            { timeout: 10000 }
+        );
+
+        if (response.data.status !== '1' || !response.data.result) {
+            return { confirmed: false };
+        }
+
+        const transactions = response.data.result || [];
+        const paymentTime = new Date(payment.createdAt).getTime();
+
+        for (const tx of transactions) {
+            const txTime = parseInt(tx.timeStamp) * 1000;
+
+            // Check if transaction is recent and incoming (native AVAX)
+            // For native AVAX, value is in Wei (18 decimals)
+            if (txTime >= paymentTime &&
+                tx.to.toLowerCase() === payment.address.toLowerCase() &&
+                tx.value !== '0') {
+
+                // AVAX has 18 decimals (Wei)
+                const receivedAmount = parseFloat(tx.value) / 1e18;
+
+                // Check if amount matches (with small tolerance)
+                const tolerance = 0.01; // 0.01 AVAX tolerance
+                if (Math.abs(receivedAmount - payment.amount) <= tolerance || receivedAmount >= payment.amount) {
+                    return {
+                        confirmed: true,
+                        txHash: tx.hash,
+                        amount: receivedAmount
+                    };
+                }
+            }
+        }
+
+        return { confirmed: false };
+    } catch (error) {
+        if (error.response?.status === 404 || error.response?.data?.status === '0') {
+            return { confirmed: false };
+        }
+        throw error;
+    }
+}
+
 // Generate QR code data
 function generateQRData(method, address, amount) {
     if (method === 'btc') {
@@ -333,6 +439,9 @@ function generateQRData(method, address, amount) {
     } else if (method === 'usdt-avax') {
         // For USDT, we can use a simple address or add amount parameter
         // Some wallets support ethereum: URI format
+        return address; // Simple address for QR code
+    } else if (method === 'avax') {
+        // For AVAX, use simple address (some wallets support ethereum: format)
         return address; // Simple address for QR code
     }
     return address;

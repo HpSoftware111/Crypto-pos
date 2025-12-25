@@ -1,16 +1,19 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Crypto POS - Point of Sale</title>
     <link rel="stylesheet" href="styles.css">
 </head>
+
 <body>
     <div class="container">
         <header>
-            <h1>💰 Crypto POS</h1>
-            <p class="subtitle">Point of Sale System</p>
+            <img src="logo.png" alt="Logo" class="logo">
+            <h1>Crypto POS</h1>
+            <p class="subtitle">Secure Payment Processing</p>
         </header>
 
         <main>
@@ -19,17 +22,30 @@
                 <h2>Select Payment Method</h2>
                 <div class="payment-methods">
                     <button class="payment-btn" data-method="usdt-avax">
-                        <div class="coin-icon">🟢</div>
+                        <div class="coin-icon-wrapper">
+                            <img src="USDT.jfif" alt="USDT" class="coin-icon-img">
+                        </div>
                         <div class="coin-info">
                             <div class="coin-name">USDT</div>
                             <div class="coin-network">Avalanche</div>
                         </div>
                     </button>
                     <button class="payment-btn" data-method="btc">
-                        <div class="coin-icon">🟠</div>
+                        <div class="coin-icon-wrapper">
+                            <img src="btc.png" alt="Bitcoin" class="coin-icon-img">
+                        </div>
                         <div class="coin-info">
                             <div class="coin-name">Bitcoin</div>
                             <div class="coin-network">BTC</div>
+                        </div>
+                    </button>
+                    <button class="payment-btn" data-method="avax">
+                        <div class="coin-icon-wrapper">
+                            <img src="avax.png" alt="AVAX" class="coin-icon-img">
+                        </div>
+                        <div class="coin-info">
+                            <div class="coin-name">AVAX</div>
+                            <div class="coin-network">Avalanche</div>
                         </div>
                     </button>
                 </div>
@@ -68,12 +84,21 @@
                     <label>Payment Address:</label>
                     <div class="address-display">
                         <code id="paymentAddress"></code>
-                        <button class="copy-btn" id="copyBtn" title="Copy address">📋</button>
+                        <button class="copy-btn" id="copyBtn" title="Copy address">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2">
+                                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                            </svg>
+                            <span class="copy-text">Copy</span>
+                        </button>
                     </div>
                 </div>
                 <div class="status-container">
                     <div class="status" id="paymentStatus">
-                        <span class="status-icon">⏳</span>
+                        <div class="status-icon-wrapper">
+                            <div class="spinner"></div>
+                        </div>
                         <span class="status-text">Waiting for payment...</span>
                     </div>
                 </div>
@@ -93,7 +118,7 @@
             'https://unpkg.com/qrcode@1.5.3/build/qrcode.min.js',
             'https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js'
         ];
-        
+
         let cdnIndex = 0;
         function loadQRCode() {
             if (cdnIndex >= cdnUrls.length) {
@@ -101,13 +126,13 @@
                 window.QRCode = null;
                 return;
             }
-            
+
             const script = document.createElement('script');
             script.src = cdnUrls[cdnIndex];
-            script.onload = function() {
+            script.onload = function () {
                 console.log('QRCode library loaded from:', cdnUrls[cdnIndex]);
             };
-            script.onerror = function() {
+            script.onerror = function () {
                 console.warn('CDN failed:', cdnUrls[cdnIndex]);
                 cdnIndex++;
                 loadQRCode();
@@ -118,5 +143,5 @@
     </script>
     <script src="app.js"></script>
 </body>
-</html>
 
+</html>

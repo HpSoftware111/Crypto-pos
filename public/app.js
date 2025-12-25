@@ -67,7 +67,8 @@ class CryptoPOS {
         this.currentMethod = method;
         const methodNames = {
             'usdt-avax': 'USDT (Avalanche)',
-            'btc': 'Bitcoin (BTC)'
+            'btc': 'Bitcoin (BTC)',
+            'avax': 'AVAX (Avalanche)'
         };
 
         document.getElementById('currencyDisplay').textContent = methodNames[method];
@@ -138,7 +139,8 @@ class CryptoPOS {
     displayPayment(data) {
         const methodNames = {
             'usdt-avax': 'USDT (Avalanche)',
-            'btc': 'Bitcoin (BTC)'
+            'btc': 'Bitcoin (BTC)',
+            'avax': 'AVAX (Avalanche)'
         };
 
         // Show payment section FIRST so elements are available
@@ -146,9 +148,17 @@ class CryptoPOS {
         document.getElementById('amountSection').classList.add('hidden');
         document.getElementById('paymentSection').classList.remove('hidden');
 
+        // Determine currency symbol
+        let currency = 'USDT';
+        if (this.currentMethod === 'btc') {
+            currency = 'BTC';
+        } else if (this.currentMethod === 'avax') {
+            currency = 'AVAX';
+        }
+
         // Update payment info
-        document.getElementById('displayAmount').textContent =
-            `${this.currentAmount.toFixed(2)} ${this.currentMethod === 'btc' ? 'BTC' : 'USDT'}`;
+        document.getElementById('displayAmount').textContent = 
+            `${this.currentAmount.toFixed(2)} ${currency}`;
         document.getElementById('displayMethod').textContent = methodNames[this.currentMethod];
         document.getElementById('paymentAddress').textContent = this.paymentAddress;
 
@@ -211,7 +221,12 @@ class CryptoPOS {
         // Reset status
         const statusEl = document.getElementById('paymentStatus');
         statusEl.className = 'status';
-        statusEl.innerHTML = '<span class="status-icon">⏳</span><span class="status-text">Waiting for payment...</span>';
+        statusEl.innerHTML = `
+            <div class="status-icon-wrapper">
+                <div class="spinner"></div>
+            </div>
+            <span class="status-text">Waiting for payment...</span>
+        `;
 
         this.setLoadingState(false);
     }
@@ -264,7 +279,12 @@ class CryptoPOS {
                 const statusEl = document.getElementById('paymentStatus');
                 const minutes = Math.floor(this.retryCount * 2 / 60);
                 const seconds = (this.retryCount * 2) % 60;
-                statusEl.innerHTML = `<span class="status-icon">⏳</span><span class="status-text">Waiting for payment... (${minutes}:${seconds.toString().padStart(2, '0')})</span>`;
+                statusEl.innerHTML = `
+                    <div class="status-icon-wrapper">
+                        <div class="spinner"></div>
+                    </div>
+                    <span class="status-text">Waiting for payment... (${minutes}:${seconds.toString().padStart(2, '0')})</span>
+                `;
             }
         } catch (error) {
             console.error('Error checking payment:', error);
@@ -278,19 +298,28 @@ class CryptoPOS {
 
         const statusEl = document.getElementById('paymentStatus');
         statusEl.className = 'status success';
-
+        
         let message = 'Payment confirmed!';
         if (paymentData.txHash) {
             message += `\nTransaction: ${paymentData.txHash.substring(0, 16)}...`;
         }
-
-        statusEl.innerHTML = `<span class="status-icon">✅</span><span class="status-text">${message}</span>`;
+        
+        statusEl.innerHTML = `
+            <div class="status-icon-wrapper"></div>
+            <span class="status-text">${message}</span>
+        `;
 
         // Show success notification
         setTimeout(() => {
             const txInfo = paymentData.txHash ?
                 `\n\nTransaction Hash:\n${paymentData.txHash}` : '';
-            alert(`✅ Payment of ${this.currentAmount} ${this.currentMethod === 'btc' ? 'BTC' : 'USDT'} confirmed!${txInfo}`);
+            let currency = 'USDT';
+            if (this.currentMethod === 'btc') {
+                currency = 'BTC';
+            } else if (this.currentMethod === 'avax') {
+                currency = 'AVAX';
+            }
+            alert(`✅ Payment of ${this.currentAmount} ${currency} confirmed!${txInfo}`);
         }, 500);
     }
 
@@ -323,12 +352,18 @@ class CryptoPOS {
 
         navigator.clipboard.writeText(this.paymentAddress).then(() => {
             const copyBtn = document.getElementById('copyBtn');
-            const originalText = copyBtn.textContent;
-            copyBtn.textContent = '✓';
-            copyBtn.style.background = '#28a745';
+            const copyText = copyBtn.querySelector('.copy-text');
+            const originalText = copyText ? copyText.textContent : 'Copy';
+            
+            if (copyText) {
+                copyText.textContent = 'Copied!';
+            }
+            copyBtn.style.background = 'var(--success)';
             setTimeout(() => {
-                copyBtn.textContent = originalText;
-                copyBtn.style.background = '#667eea';
+                if (copyText) {
+                    copyText.textContent = originalText;
+                }
+                copyBtn.style.background = '';
             }, 2000);
         }).catch(err => {
             console.error('Failed to copy:', err);
