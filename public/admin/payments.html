@@ -1,16 +1,18 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Payment History - Crypto POS</title>
     <link rel="stylesheet" href="admin.css">
 </head>
+
 <body>
     <div class="admin-header">
         <div class="header-left">
             <img src="../logo.png" alt="Logo" class="logo">
-            <h1>🔐 Crypto POS Admin</h1>
+            <h1>Crypto POS Admin</h1>
         </div>
         <div class="admin-nav">
             <a href="/admin">Dashboard</a>
@@ -52,13 +54,16 @@
                     </tr>
                 </thead>
                 <tbody id="paymentsTableBody">
-                    <tr><td colspan="8" class="loading">Loading payments...</td></tr>
+                    <tr>
+                        <td colspan="8" class="loading">Loading payments...</td>
+                    </tr>
                 </tbody>
             </table>
         </div>
 
         <div style="margin-top: 20px; text-align: center;">
-            <button class="btn btn-secondary" onclick="loadMorePayments()" id="loadMoreBtn" style="display: none;">Load More</button>
+            <button class="btn btn-secondary" onclick="loadMorePayments()" id="loadMoreBtn" style="display: none;">Load
+                More</button>
         </div>
     </div>
 
@@ -163,5 +168,5 @@
         }
     </script>
 </body>
-</html>
 
+</html>
