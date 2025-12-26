@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Coin Management - Crypto POS</title>
+    <link rel="stylesheet" href="admin.css">
+</head>
+<body>
+    <div class="admin-header">
+        <h1>🔐 Crypto POS Admin</h1>
+        <div class="admin-nav">
+            <a href="/admin">Dashboard</a>
+            <a href="/admin/coins" class="active">Coins</a>
+            <a href="/admin/payments">Payments</a>
+            <a href="/" target="_blank">POS View</a>
+            <button class="btn btn-secondary" onclick="logout()" style="margin-left: 10px;">Logout</button>
+        </div>
+    </div>
+
+    <div class="admin-container">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <h2>Coin Management</h2>
+            <button class="btn btn-primary" onclick="showAddCoinModal()">+ Add New Coin</button>
+        </div>
+
+        <div id="alertContainer"></div>
+
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Symbol</th>
+                        <th>Method Code</th>
+                        <th>Network</th>
+                        <th>Wallet Address</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="coinsTableBody">
+                    <tr><td colspan="7" class="loading">Loading coins...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Add/Edit Coin Modal -->
+    <div class="modal" id="coinModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="modalTitle">Add New Coin</h2>
+                <button class="close-btn" onclick="closeModal()">&times;</button>
+            </div>
+            <form id="coinForm">
+                <input type="hidden" id="coinId">
+                <div class="form-group">
+                    <label>Coin ID *</label>
+                    <input type="text" id="coinIdInput" required>
+                    <small style="color: #999;">Unique identifier (e.g., btc, usdt-avax)</small>
+                </div>
+                <div class="form-group">
+                    <label>Name *</label>
+                    <input type="text" id="coinName" required>
+                </div>
+                <div class="form-group">
+                    <label>Symbol *</label>
+                    <input type="text" id="coinSymbol" required>
+                </div>
+                <div class="form-group">
+                    <label>Method Code *</label>
+                    <input type="text" id="coinMethodCode" required>
+                    <small style="color: #999;">Used in payment API (e.g., btc, usdt-avax)</small>
+                </div>
+                <div class="form-group">
+                    <label>Network</label>
+                    <select id="coinNetwork">
+                        <option value="mainnet">Mainnet</option>
+                        <option value="testnet">Testnet</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Wallet Address *</label>
+                    <input type="text" id="coinWalletAddress" required>
+                </div>
+                <div class="form-group">
+                    <label>API URL</label>
+                    <input type="text" id="coinApiUrl">
+                </div>
+                <div class="form-group">
+                    <label>API Key</label>
+                    <input type="text" id="coinApiKey">
+                </div>
+                <div class="form-group">
+                    <label>Contract Address</label>
+                    <input type="text" id="coinContractAddress">
+                    <small style="color: #999;">For tokens (USDT, USDC, etc.)</small>
+                </div>
+                <div class="form-group">
+                    <label>Decimals</label>
+                    <input type="number" id="coinDecimals" value="18" min="0" max="18">
+                </div>
+                <div class="form-group">
+                    <label>Icon Filename</label>
+                    <input type="text" id="coinIcon" placeholder="btc.png">
+                </div>
+                <div class="form-group">
+                    <label>Confirmations Required</label>
+                    <input type="number" id="coinConfirmations" value="1" min="1">
+                </div>
+                <div class="form-group">
+                    <label>Enabled</label>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="coinEnabled" checked>
+                        <span class="slider"></span>
+                    </label>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Save Coin</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        let editingCoinId = null;
+
+        // Check authentication
+        fetch('/api/admin/auth/status', { credentials: 'include' })
+            .then(res => res.json())
+            .then(data => {
+                if (!data.authenticated) {
+                    window.location.href = '/admin/login';
+                } else {
+                    loadCoins();
+                }
+            });
+
+        async function loadCoins() {
+            try {
+                const res = await fetch('/api/admin/coins', { credentials: 'include' });
+                const data = await res.json();
+                displayCoins(data.coins);
+            } catch (error) {
+                console.error('Error loading coins:', error);
+            }
+        }
+
+        function displayCoins(coins) {
+            const tbody = document.getElementById('coinsTableBody');
+            if (coins.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; padding: 40px; color: #999;">No coins configured</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = coins.map(coin => `
+                <tr>
+                    <td>${coin.name}</td>
+                    <td>${coin.symbol}</td>
+                    <td><code>${coin.method_code}</code></td>
+                    <td>${coin.network}</td>
+                    <td><code style="font-size: 11px;">${coin.wallet_address ? coin.wallet_address.substring(0, 20) + '...' : 'Not set'}</code></td>
+                    <td>
+                        <span class="status-badge status-${coin.enabled ? 'enabled' : 'disabled'}">
+                            ${coin.enabled ? 'Enabled' : 'Disabled'}
+                        </span>
+                    </td>
+                    <td>
+                        <button class="btn btn-primary" style="padding: 6px 12px; font-size: 12px;" onclick="editCoin('${coin.id}')">Edit</button>
+                        <button class="btn ${coin.enabled ? 'btn-secondary' : 'btn-success'}" style="padding: 6px 12px; font-size: 12px;" onclick="toggleCoin('${coin.id}', ${!coin.enabled})">
+                            ${coin.enabled ? 'Disable' : 'Enable'}
+                        </button>
+                        <button class="btn btn-danger" style="padding: 6px 12px; font-size: 12px;" onclick="deleteCoin('${coin.id}')">Delete</button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        function showAddCoinModal() {
+            editingCoinId = null;
+            document.getElementById('modalTitle').textContent = 'Add New Coin';
+            document.getElementById('coinForm').reset();
+            document.getElementById('coinId').value = '';
+            document.getElementById('coinIdInput').disabled = false;
+            document.getElementById('coinModal').classList.add('show');
+        }
+
+        function editCoin(coinId) {
+            editingCoinId = coinId;
+            fetch(`/api/admin/coins/${coinId}`, { credentials: 'include' })
+                .then(res => res.json())
+                .then(data => {
+                    const coin = data.coin;
+                    document.getElementById('modalTitle').textContent = 'Edit Coin';
+                    document.getElementById('coinId').value = coin.id;
+                    document.getElementById('coinIdInput').value = coin.id;
+                    document.getElementById('coinIdInput').disabled = true;
+                    document.getElementById('coinName').value = coin.name;
+                    document.getElementById('coinSymbol').value = coin.symbol;
+                    document.getElementById('coinMethodCode').value = coin.method_code;
+                    document.getElementById('coinNetwork').value = coin.network;
+                    document.getElementById('coinWalletAddress').value = coin.wallet_address || '';
+                    document.getElementById('coinApiUrl').value = coin.api_url || '';
+                    document.getElementById('coinApiKey').value = coin.api_key || '';
+                    document.getElementById('coinContractAddress').value = coin.contract_address || '';
+                    document.getElementById('coinDecimals').value = coin.decimals || 18;
+                    document.getElementById('coinIcon').value = coin.icon || '';
+                    document.getElementById('coinConfirmations').value = coin.confirmations_required || 1;
+                    document.getElementById('coinEnabled').checked = coin.enabled === 1;
+                    document.getElementById('coinModal').classList.add('show');
+                });
+        }
+
+        function closeModal() {
+            document.getElementById('coinModal').classList.remove('show');
+        }
+
+        document.getElementById('coinForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const coinData = {
+                id: document.getElementById('coinIdInput').value,
+                name: document.getElementById('coinName').value,
+                symbol: document.getElementById('coinSymbol').value,
+                method_code: document.getElementById('coinMethodCode').value,
+                network: document.getElementById('coinNetwork').value,
+                wallet_address: document.getElementById('coinWalletAddress').value,
+                api_url: document.getElementById('coinApiUrl').value,
+                api_key: document.getElementById('coinApiKey').value,
+                contract_address: document.getElementById('coinContractAddress').value,
+                decimals: parseInt(document.getElementById('coinDecimals').value),
+                icon: document.getElementById('coinIcon').value,
+                confirmations_required: parseInt(document.getElementById('coinConfirmations').value),
+                enabled: document.getElementById('coinEnabled').checked ? 1 : 0
+            };
+
+            try {
+                const url = editingCoinId ? `/api/admin/coins/${editingCoinId}` : '/api/admin/coins';
+                const method = editingCoinId ? 'PUT' : 'POST';
+                
+                const res = await fetch(url, {
+                    method,
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify(coinData)
+                });
+
+                const data = await res.json();
+                if (res.ok) {
+                    showAlert('success', data.message || 'Coin saved successfully');
+                    closeModal();
+                    loadCoins();
+                } else {
+                    showAlert('error', data.error || 'Failed to save coin');
+                }
+            } catch (error) {
+                showAlert('error', 'Error saving coin');
+            }
+        });
+
+        async function toggleCoin(coinId, enabled) {
+            try {
+                const res = await fetch(`/api/admin/coins/${coinId}/toggle`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({ enabled })
+                });
+
+                const data = await res.json();
+                if (res.ok) {
+                    showAlert('success', data.message);
+                    loadCoins();
+                } else {
+                    showAlert('error', data.error);
+                }
+            } catch (error) {
+                showAlert('error', 'Error toggling coin');
+            }
+        }
+
+        async function deleteCoin(coinId) {
+            if (!confirm('Are you sure you want to delete this coin? This action cannot be undone.')) {
+                return;
+            }
+
+            try {
+                const res = await fetch(`/api/admin/coins/${coinId}`, {
+                    method: 'DELETE',
+                    credentials: 'include'
+                });
+
+                const data = await res.json();
+                if (res.ok) {
+                    showAlert('success', data.message);
+                    loadCoins();
+                } else {
+                    showAlert('error', data.error);
+                }
+            } catch (error) {
+                showAlert('error', 'Error deleting coin');
+            }
+        }
+
+        function showAlert(type, message) {
+            const container = document.getElementById('alertContainer');
+            container.innerHTML = `<div class="alert alert-${type}">${message}</div>`;
+            setTimeout(() => {
+                container.innerHTML = '';
+            }, 5000);
+        }
+
+        function logout() {
+            fetch('/api/admin/logout', { method: 'POST', credentials: 'include' })
+                .then(() => window.location.href = '/admin/login');
+        }
+
+        // Close modal on outside click
+        document.getElementById('coinModal').addEventListener('click', (e) => {
+            if (e.target.id === 'coinModal') {
+                closeModal();
+            }
+        });
+    </script>
+</body>
+</html>
+

@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Payment History - Crypto POS</title>
+    <link rel="stylesheet" href="admin.css">
+</head>
+<body>
+    <div class="admin-header">
+        <h1>🔐 Crypto POS Admin</h1>
+        <div class="admin-nav">
+            <a href="/admin">Dashboard</a>
+            <a href="/admin/coins">Coins</a>
+            <a href="/admin/payments" class="active">Payments</a>
+            <a href="/" target="_blank">POS View</a>
+            <button class="btn btn-secondary" onclick="logout()" style="margin-left: 10px;">Logout</button>
+        </div>
+    </div>
+
+    <div class="admin-container">
+        <h2 style="margin-bottom: 20px;">Payment History</h2>
+
+        <div style="display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap;">
+            <select id="statusFilter" style="padding: 8px; border-radius: 6px; border: 2px solid #e0e0e0;">
+                <option value="">All Status</option>
+                <option value="pending">Pending</option>
+                <option value="confirmed">Confirmed</option>
+            </select>
+            <select id="coinFilter" style="padding: 8px; border-radius: 6px; border: 2px solid #e0e0e0;">
+                <option value="">All Coins</option>
+            </select>
+            <button class="btn btn-primary" onclick="loadPayments()">Filter</button>
+            <button class="btn btn-secondary" onclick="resetFilters()">Reset</button>
+        </div>
+
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Payment ID</th>
+                        <th>Coin</th>
+                        <th>Amount</th>
+                        <th>Address</th>
+                        <th>Status</th>
+                        <th>Transaction Hash</th>
+                        <th>Created</th>
+                        <th>Confirmed</th>
+                    </tr>
+                </thead>
+                <tbody id="paymentsTableBody">
+                    <tr><td colspan="8" class="loading">Loading payments...</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div style="margin-top: 20px; text-align: center;">
+            <button class="btn btn-secondary" onclick="loadMorePayments()" id="loadMoreBtn" style="display: none;">Load More</button>
+        </div>
+    </div>
+
+    <script>
+        let currentOffset = 0;
+        const limit = 50;
+
+        // Check authentication
+        fetch('/api/admin/auth/status', { credentials: 'include' })
+            .then(res => res.json())
+            .then(data => {
+                if (!data.authenticated) {
+                    window.location.href = '/admin/login';
+                } else {
+                    loadCoins();
+                    loadPayments();
+                }
+            });
+
+        async function loadCoins() {
+            try {
+                const res = await fetch('/api/admin/coins', { credentials: 'include' });
+                const data = await res.json();
+                const select = document.getElementById('coinFilter');
+                data.coins.forEach(coin => {
+                    const option = document.createElement('option');
+                    option.value = coin.id;
+                    option.textContent = `${coin.name} (${coin.symbol})`;
+                    select.appendChild(option);
+                });
+            } catch (error) {
+                console.error('Error loading coins:', error);
+            }
+        }
+
+        async function loadPayments(reset = true) {
+            if (reset) currentOffset = 0;
+
+            const status = document.getElementById('statusFilter').value;
+            const coinId = document.getElementById('coinFilter').value;
+
+            const params = new URLSearchParams({
+                limit: limit,
+                offset: currentOffset
+            });
+            if (status) params.append('status', status);
+            if (coinId) params.append('coinId', coinId);
+
+            try {
+                const res = await fetch(`/api/admin/payments?${params}`, { credentials: 'include' });
+                const data = await res.json();
+
+                const tbody = document.getElementById('paymentsTableBody');
+                if (reset) {
+                    tbody.innerHTML = '';
+                }
+
+                if (data.payments && data.payments.length > 0) {
+                    tbody.innerHTML += data.payments.map(p => `
+                        <tr>
+                            <td><code style="font-size: 11px;">${p.payment_id.substring(0, 24)}...</code></td>
+                            <td>${p.symbol || p.coin_name}</td>
+                            <td>${p.amount} ${p.symbol || ''}</td>
+                            <td><code style="font-size: 10px;">${p.address.substring(0, 20)}...</code></td>
+                            <td><span class="status-badge status-${p.status}">${p.status}</span></td>
+                            <td>${p.tx_hash ? `<code style="font-size: 10px;">${p.tx_hash.substring(0, 16)}...</code>` : '-'}</td>
+                            <td>${new Date(p.created_at).toLocaleString()}</td>
+                            <td>${p.confirmed_at ? new Date(p.confirmed_at).toLocaleString() : '-'}</td>
+                        </tr>
+                    `).join('');
+
+                    if (data.payments.length === limit) {
+                        document.getElementById('loadMoreBtn').style.display = 'block';
+                        currentOffset += limit;
+                    } else {
+                        document.getElementById('loadMoreBtn').style.display = 'none';
+                    }
+                } else {
+                    if (reset) {
+                        tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; padding: 40px; color: #999;">No payments found</td></tr>';
+                    }
+                    document.getElementById('loadMoreBtn').style.display = 'none';
+                }
+            } catch (error) {
+                console.error('Error loading payments:', error);
+            }
+        }
+
+        function loadMorePayments() {
+            loadPayments(false);
+        }
+
+        function resetFilters() {
+            document.getElementById('statusFilter').value = '';
+            document.getElementById('coinFilter').value = '';
+            loadPayments();
+        }
+
+        function logout() {
+            fetch('/api/admin/logout', { method: 'POST', credentials: 'include' })
+                .then(() => window.location.href = '/admin/login');
+        }
+    </script>
+</body>
+</html>
+

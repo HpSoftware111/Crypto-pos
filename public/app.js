@@ -13,12 +13,8 @@ class CryptoPOS {
     }
 
     init() {
-        // Payment method buttons
-        document.querySelectorAll('.payment-btn').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                this.selectPaymentMethod(e.currentTarget.dataset.method);
-            });
-        });
+        // Load coins from API
+        this.loadCoins();
 
         // Amount input
         document.getElementById('generateBtn').addEventListener('click', () => {
@@ -52,6 +48,53 @@ class CryptoPOS {
         this.checkServerHealth();
     }
 
+    async loadCoins() {
+        try {
+            const response = await fetch(`${this.apiBaseUrl}/api/coins`);
+            const data = await response.json();
+            
+            if (data.coins && data.coins.length > 0) {
+                this.coins = data.coins;
+                this.renderCoins(data.coins);
+            } else {
+                this.showError('No payment methods available. Please configure coins in admin panel.');
+            }
+        } catch (error) {
+            console.error('Error loading coins:', error);
+            this.showError('Failed to load payment methods. Please try again.');
+        }
+    }
+
+    renderCoins(coins) {
+        const methodsContainer = document.querySelector('.payment-methods');
+        if (!methodsContainer) return;
+
+        methodsContainer.innerHTML = coins.map(coin => {
+            const iconPath = coin.icon || 'usdc.svg';
+            const iconFallback = coin.icon ? '' : `<div style="display:none; width: 48px; height: 48px; border-radius: 50%; background: linear-gradient(135deg, #2775CA 0%, #1E5A9E 100%); align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 18px;">${coin.symbol}</div>`;
+            
+            return `
+                <button class="payment-btn" data-method="${coin.method_code}">
+                    <div class="coin-icon-wrapper">
+                        <img src="${iconPath}" alt="${coin.name}" class="coin-icon-img" onerror="this.onerror=null; this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                        ${iconFallback}
+                    </div>
+                    <div class="coin-info">
+                        <div class="coin-name">${coin.name}</div>
+                        <div class="coin-network">${coin.network === 'mainnet' ? coin.symbol : coin.network}</div>
+                    </div>
+                </button>
+            `;
+        }).join('');
+
+        // Re-attach event listeners
+        document.querySelectorAll('.payment-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                this.selectPaymentMethod(e.currentTarget.dataset.method);
+            });
+        });
+    }
+
     async checkServerHealth() {
         try {
             const response = await fetch(`${this.apiBaseUrl}/api/health`);
@@ -65,13 +108,16 @@ class CryptoPOS {
 
     selectPaymentMethod(method) {
         this.currentMethod = method;
-        const methodNames = {
-            'usdt-avax': 'USDT (Avalanche)',
-            'btc': 'Bitcoin (BTC)',
-            'avax': 'AVAX (Avalanche)'
-        };
-
-        document.getElementById('currencyDisplay').textContent = methodNames[method];
+        
+        // Find coin info
+        const coin = this.coins?.find(c => c.method_code === method);
+        if (coin) {
+            const networkText = coin.network === 'mainnet' ? coin.symbol : coin.network;
+            document.getElementById('currencyDisplay').textContent = `${coin.name} (${networkText})`;
+        } else {
+            document.getElementById('currencyDisplay').textContent = method;
+        }
+        
         this.showAmountInput();
     }
 
@@ -137,29 +183,20 @@ class CryptoPOS {
     }
 
     displayPayment(data) {
-        const methodNames = {
-            'usdt-avax': 'USDT (Avalanche)',
-            'btc': 'Bitcoin (BTC)',
-            'avax': 'AVAX (Avalanche)'
-        };
+        // Find coin info
+        const coin = this.coins?.find(c => c.method_code === this.currentMethod);
+        const coinName = coin ? coin.name : this.currentMethod;
+        const currency = coin ? coin.symbol : 'COIN';
 
         // Show payment section FIRST so elements are available
         document.getElementById('methodSection').classList.add('hidden');
         document.getElementById('amountSection').classList.add('hidden');
         document.getElementById('paymentSection').classList.remove('hidden');
 
-        // Determine currency symbol
-        let currency = 'USDT';
-        if (this.currentMethod === 'btc') {
-            currency = 'BTC';
-        } else if (this.currentMethod === 'avax') {
-            currency = 'AVAX';
-        }
-
         // Update payment info
         document.getElementById('displayAmount').textContent = 
             `${this.currentAmount.toFixed(2)} ${currency}`;
-        document.getElementById('displayMethod').textContent = methodNames[this.currentMethod];
+        document.getElementById('displayMethod').textContent = coinName;
         document.getElementById('paymentAddress').textContent = this.paymentAddress;
 
         // Generate QR code - use qrData if available, otherwise use address
@@ -318,12 +355,8 @@ class CryptoPOS {
         setTimeout(() => {
             const txInfo = paymentData.txHash ?
                 `\n\nTransaction Hash:\n${paymentData.txHash}` : '';
-            let currency = 'USDT';
-            if (this.currentMethod === 'btc') {
-                currency = 'BTC';
-            } else if (this.currentMethod === 'avax') {
-                currency = 'AVAX';
-            }
+            const coin = this.coins?.find(c => c.method_code === this.currentMethod);
+            const currency = coin ? coin.symbol : 'COIN';
             alert(`✅ Payment of ${this.currentAmount} ${currency} confirmed!${txInfo}`);
         }, 500);
     }

@@ -2,45 +2,42 @@ const express = require('express');
 const cors = require('cors');
 const axios = require('axios');
 const path = require('path');
+const session = require('express-session');
+const { getDatabase } = require('./database');
+const adminRoutes = require('./routes/admin');
+const { requireAuthHTML } = require('./middleware/auth');
 
 const app = express();
 const PORT = 3000;
 
+// Initialize database
+const db = getDatabase();
+
 // Middleware
-app.use(cors());
+app.use(cors({
+    origin: true,
+    credentials: true
+}));
 app.use(express.json());
 app.use(express.static('public'));
 
-// Store active payment requests (in production, use Redis or database)
+// Session configuration
+app.use(session({
+    secret: process.env.SESSION_SECRET || 'crypto-pos-secret-key-change-in-production',
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+        secure: false, // Set to true in production with HTTPS
+        httpOnly: true,
+        maxAge: 24 * 60 * 60 * 1000 // 24 hours
+    }
+}));
+
+// Store active payment requests (in-memory for quick access, also stored in DB)
 const activePayments = new Map();
 
-// Status-based configuration (replaces .env file)
-const STATUS = {
-    BTC: {
-        walletAddress: 'bc1qh5n4uall8hqeshtlklp3p2k02dz7zj2y96xkva',
-        apiUrl: 'https://blockstream.info/api',
-        confirmationsRequired: 1
-    },
-    AVALANCHE: {
-        walletAddress: '0x0029B302c6a0858b5648302dA5F4b24b67fBb364',
-        apiUrl: 'https://api.snowtrace.io/api',
-        apiKey: 'rs_ce1e170ba51f9f9bbe4ce524',
-        confirmationsRequired: 1,
-        // USDT contract address on Avalanche C-Chain
-        usdtContractAddress: '0x9702230A8Ea53601f5cD2dc00fDBc13d4dF4A8c7' // USDT.e on Avalanche
-    },
-    AVAX: {
-        walletAddress: '0x91870B9c25C06E10Bcb88bdd0F7b43A13C2d7c41', // Client's mainnet address
-        apiUrl: 'https://api.snowtrace.io/api', // Mainnet
-        testnetApiUrl: 'https://api-testnet.snowtrace.io/api', // Testnet
-        apiKey: 'rs_ce1e170ba51f9f9bbe4ce524',
-        confirmationsRequired: 1,
-        network: 'mainnet' // 'mainnet' or 'testnet'
-    }
-};
-
-// Configuration getter (for backward compatibility)
-const CONFIG = STATUS;
+// Configuration is now stored in SQLite database
+// Old STATUS object removed - all config comes from database
 
 // Get status/configuration
 app.get('/api/status', (req, res) => {
@@ -60,6 +57,11 @@ app.get('/api/status', (req, res) => {
                 walletAddress: STATUS.AVAX.walletAddress || null,
                 network: STATUS.AVAX.network || 'mainnet',
                 configured: !!STATUS.AVAX.walletAddress
+            },
+            usdc: {
+                walletAddress: STATUS.USDC.walletAddress || null,
+                apiKey: STATUS.USDC.apiKey || null,
+                configured: !!STATUS.USDC.walletAddress
             }
         }
     });
@@ -134,6 +136,30 @@ app.post('/api/status/avax', (req, res) => {
     }
 });
 
+// Set USDC wallet address
+app.post('/api/status/usdc', (req, res) => {
+    try {
+        const { walletAddress, apiKey } = req.body;
+        if (!walletAddress || typeof walletAddress !== 'string') {
+            return res.status(400).json({ error: 'Invalid wallet address' });
+        }
+        STATUS.USDC.walletAddress = walletAddress.trim();
+        if (apiKey && typeof apiKey === 'string') {
+            STATUS.USDC.apiKey = apiKey.trim();
+        }
+        console.log('✅ USDC wallet address updated');
+        res.json({
+            status: 'ok',
+            message: 'USDC wallet address updated',
+            walletAddress: STATUS.USDC.walletAddress,
+            apiKeySet: !!STATUS.USDC.apiKey
+        });
+    } catch (error) {
+        console.error('Error setting USDC wallet:', error);
+        res.status(500).json({ error: 'Failed to update USDC wallet address' });
+    }
+});
+
 // Validate configuration
 function validateConfig() {
     const errors = [];
@@ -146,79 +172,84 @@ function validateConfig() {
     if (!STATUS.AVAX.walletAddress) {
         errors.push('AVAX wallet address not set');
     }
+    if (!STATUS.USDC.walletAddress) {
+        errors.push('USDC wallet address not set');
+    }
     if (errors.length > 0) {
         console.warn('⚠️  Configuration warnings:', errors.join(', '));
         console.warn('⚠️  Use API endpoints to set wallet addresses:');
         console.warn('   POST /api/status/btc - Set BTC wallet address');
         console.warn('   POST /api/status/avalanche - Set Avalanche wallet address');
         console.warn('   POST /api/status/avax - Set AVAX wallet address');
+        console.warn('   POST /api/status/usdc - Set USDC wallet address');
     } else {
         console.log('✅ All wallet addresses configured');
         console.log(`   AVAX Network: ${STATUS.AVAX.network}`);
     }
 }
 
+// Get enabled coins for POS frontend
+app.get('/api/coins', async (req, res) => {
+    try {
+        const coins = db.getEnabledCoins();
+        res.json({ coins });
+    } catch (error) {
+        console.error('Error fetching coins:', error);
+        res.status(500).json({ error: 'Failed to fetch coins' });
+    }
+});
+
 // Generate payment request
 app.post('/api/payment/create', async (req, res) => {
     try {
         const { method, amount } = req.body;
 
-        // Validation
-        if (!method || !['btc', 'usdt-avax', 'avax'].includes(method)) {
-            return res.status(400).json({ error: 'Invalid payment method' });
+        if (!method || !amount || amount <= 0) {
+            return res.status(400).json({ error: 'Invalid payment method or amount' });
         }
 
-        if (!amount || amount <= 0) {
-            return res.status(400).json({ error: 'Invalid amount' });
+        // Get coin from database
+        const coin = db.getCoinByMethodCode(method);
+        if (!coin) {
+            return res.status(400).json({ error: 'Payment method not available or disabled' });
+        }
+
+        if (!coin.wallet_address) {
+            return res.status(500).json({
+                error: `Wallet address not configured for ${coin.name}. Please configure in admin panel.`
+            });
         }
 
         // Generate payment ID
         const paymentId = `payment_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
-        // Get wallet address based on method
-        let walletAddress;
-        if (method === 'btc') {
-            walletAddress = CONFIG.BTC.walletAddress;
-        } else if (method === 'usdt-avax') {
-            walletAddress = CONFIG.AVALANCHE.walletAddress;
-        } else if (method === 'avax') {
-            walletAddress = CONFIG.AVAX.walletAddress;
-        }
-
-        if (!walletAddress) {
-            const endpointMap = {
-                'btc': 'POST /api/status/btc',
-                'usdt-avax': 'POST /api/status/avalanche',
-                'avax': 'POST /api/status/avax'
-            };
-            return res.status(500).json({
-                error: `Wallet address not configured for ${method}. Please set using API endpoint.`,
-                endpoint: endpointMap[method] || 'Unknown'
-            });
-        }
-
-        // Store payment request
+        // Store payment in database
         const paymentData = {
             id: paymentId,
-            method,
+            paymentId,
+            coinId: coin.id,
+            method: coin.method_code,
             amount: parseFloat(amount),
-            address: walletAddress,
-            createdAt: new Date().toISOString(),
+            address: coin.wallet_address,
             status: 'pending',
             confirmed: false
         };
 
-        activePayments.set(paymentId, paymentData);
+        db.createPayment(paymentData);
 
-        // Clean up old payments (older than 1 hour)
-        cleanupOldPayments();
+        // Also store in memory for quick access
+        activePayments.set(paymentId, {
+            ...paymentData,
+            createdAt: new Date().toISOString(),
+            coin: coin
+        });
 
         res.json({
             paymentId,
-            address: walletAddress,
+            address: coin.wallet_address,
             amount: paymentData.amount,
-            method,
-            qrData: generateQRData(method, walletAddress, amount)
+            method: coin.method_code,
+            qrData: generateQRData(coin.method_code, coin.wallet_address, amount)
         });
     } catch (error) {
         console.error('Error creating payment:', error);
@@ -230,33 +261,55 @@ app.post('/api/payment/create', async (req, res) => {
 app.get('/api/payment/status/:paymentId', async (req, res) => {
     try {
         const { paymentId } = req.params;
-        const payment = activePayments.get(paymentId);
 
+        // Try to get from memory first, then database
+        let payment = activePayments.get(paymentId);
         if (!payment) {
-            return res.status(404).json({ error: 'Payment not found' });
+            const dbPayment = db.getPaymentById(paymentId);
+            if (!dbPayment) {
+                return res.status(404).json({ error: 'Payment not found' });
+            }
+            // Get coin info
+            const coin = db.getCoinById(dbPayment.coin_id);
+            payment = {
+                ...dbPayment,
+                method: dbPayment.method,
+                address: dbPayment.address,
+                coin: coin
+            };
         }
 
         // Check blockchain for payment
         const paymentStatus = await checkBlockchainPayment(payment);
 
-        // Update payment status
+        // Update payment status in database and memory
         if (paymentStatus.confirmed && !payment.confirmed) {
-            payment.confirmed = true;
-            payment.status = 'confirmed';
-            payment.confirmedAt = new Date().toISOString();
-            payment.txHash = paymentStatus.txHash;
+            db.updatePayment(paymentId, {
+                confirmed: true,
+                status: 'confirmed',
+                confirmed_at: new Date().toISOString(),
+                tx_hash: paymentStatus.txHash
+            });
+
+            if (activePayments.has(paymentId)) {
+                payment.confirmed = true;
+                payment.status = 'confirmed';
+                payment.confirmedAt = new Date().toISOString();
+                payment.txHash = paymentStatus.txHash;
+            }
         }
 
+        const dbPayment = db.getPaymentById(paymentId);
         res.json({
-            paymentId: payment.id,
-            status: payment.status,
-            confirmed: payment.confirmed,
-            amount: payment.amount,
-            method: payment.method,
-            address: payment.address,
-            txHash: payment.txHash,
-            createdAt: payment.createdAt,
-            confirmedAt: payment.confirmedAt
+            paymentId: dbPayment.payment_id,
+            status: dbPayment.status,
+            confirmed: dbPayment.confirmed === 1,
+            amount: dbPayment.amount,
+            method: dbPayment.method,
+            address: dbPayment.address,
+            txHash: dbPayment.tx_hash,
+            createdAt: dbPayment.created_at,
+            confirmedAt: dbPayment.confirmed_at
         });
     } catch (error) {
         console.error('Error checking payment status:', error);
@@ -267,12 +320,29 @@ app.get('/api/payment/status/:paymentId', async (req, res) => {
 // Check blockchain for payment
 async function checkBlockchainPayment(payment) {
     try {
-        if (payment.method === 'btc') {
-            return await checkBTCPayment(payment);
-        } else if (payment.method === 'usdt-avax') {
-            return await checkUSDTPayment(payment);
-        } else if (payment.method === 'avax') {
-            return await checkAVAXPayment(payment);
+        // Get coin data (from payment object or database)
+        let coin = payment.coin;
+        if (!coin && payment.coinId) {
+            coin = db.getCoinById(payment.coinId);
+        }
+        if (!coin && payment.method) {
+            coin = db.getCoinByMethodCode(payment.method);
+        }
+
+        if (!coin) {
+            console.error('Coin not found for payment:', payment.method);
+            return { confirmed: false };
+        }
+
+        // Route to appropriate checker based on coin type
+        if (coin.id === 'btc') {
+            return await checkBTCPayment(payment, coin);
+        } else if (coin.contract_address) {
+            // Token payment (USDT, USDC, etc.)
+            return await checkTokenPayment(payment, coin);
+        } else {
+            // Native coin payment (AVAX, etc.)
+            return await checkNativePayment(payment, coin);
         }
     } catch (error) {
         console.error(`Error checking ${payment.method} payment:`, error);
@@ -281,10 +351,11 @@ async function checkBlockchainPayment(payment) {
 }
 
 // Check Bitcoin payment
-async function checkBTCPayment(payment) {
+async function checkBTCPayment(payment, coin) {
     try {
+        const apiUrl = coin.api_url || 'https://blockstream.info/api';
         const response = await axios.get(
-            `${CONFIG.BTC.apiUrl}/address/${payment.address}/txs`,
+            `${apiUrl}/address/${payment.address}/txs`,
             { timeout: 10000 }
         );
 
@@ -327,12 +398,16 @@ async function checkBTCPayment(payment) {
     }
 }
 
-// Check USDT payment on Avalanche
-async function checkUSDTPayment(payment) {
+// Check token payment (USDT, USDC, etc.)
+async function checkTokenPayment(payment, coin) {
     try {
-        const apiKey = CONFIG.AVALANCHE.apiKey ? `&apikey=${CONFIG.AVALANCHE.apiKey}` : '';
+        const apiUrl = coin.api_url || 'https://api.snowtrace.io/api';
+        const apiKey = coin.api_key ? `&apikey=${coin.api_key}` : '';
+        const contractAddress = coin.contract_address;
+        const decimals = coin.decimals || 6;
+
         const response = await axios.get(
-            `${CONFIG.AVALANCHE.apiUrl}?module=account&action=tokentx&contractaddress=${CONFIG.AVALANCHE.usdtContractAddress}&address=${payment.address}&startblock=0&endblock=99999999&sort=desc${apiKey}`,
+            `${apiUrl}?module=account&action=tokentx&contractaddress=${contractAddress}&address=${payment.address}&startblock=0&endblock=99999999&sort=desc${apiKey}`,
             { timeout: 10000 }
         );
 
@@ -341,10 +416,7 @@ async function checkUSDTPayment(payment) {
         }
 
         const transactions = response.data.result || [];
-        const paymentTime = new Date(payment.createdAt).getTime();
-
-        // USDT has 6 decimals
-        const expectedAmount = Math.floor(payment.amount * 1000000);
+        const paymentTime = new Date(payment.createdAt || payment.created_at).getTime();
 
         for (const tx of transactions) {
             const txTime = parseInt(tx.timeStamp) * 1000;
@@ -352,12 +424,12 @@ async function checkUSDTPayment(payment) {
             // Check if transaction is recent and incoming
             if (txTime >= paymentTime &&
                 tx.to.toLowerCase() === payment.address.toLowerCase() &&
-                tx.tokenSymbol === 'USDT') {
+                (tx.tokenSymbol === coin.symbol || tx.contractAddress?.toLowerCase() === contractAddress.toLowerCase())) {
 
-                const receivedAmount = parseInt(tx.value) / 1000000; // Convert from 6 decimals
+                const receivedAmount = parseInt(tx.value) / Math.pow(10, decimals);
 
                 // Check if amount matches (with small tolerance)
-                const tolerance = 0.01; // 0.01 USDT tolerance
+                const tolerance = 0.01;
                 if (Math.abs(receivedAmount - payment.amount) <= tolerance || receivedAmount >= payment.amount) {
                     return {
                         confirmed: true,
@@ -377,14 +449,15 @@ async function checkUSDTPayment(payment) {
     }
 }
 
-// Check AVAX (native) payment on Avalanche
-async function checkAVAXPayment(payment) {
+// Check native coin payment (AVAX, etc.)
+async function checkNativePayment(payment, coin) {
     try {
         // Use testnet or mainnet API based on network setting
-        const apiUrl = STATUS.AVAX.network === 'testnet'
-            ? STATUS.AVAX.testnetApiUrl
-            : STATUS.AVAX.apiUrl;
-        const apiKey = CONFIG.AVAX.apiKey ? `&apikey=${CONFIG.AVAX.apiKey}` : '';
+        let apiUrl = coin.api_url;
+        if (coin.network === 'testnet' && coin.id === 'avax') {
+            apiUrl = 'https://api-testnet.snowtrace.io/api';
+        }
+        const apiKey = coin.api_key ? `&apikey=${coin.api_key}` : '';
 
         const response = await axios.get(
             `${apiUrl}?module=account&action=txlist&address=${payment.address}&startblock=0&endblock=99999999&sort=desc${apiKey}`,
@@ -396,22 +469,21 @@ async function checkAVAXPayment(payment) {
         }
 
         const transactions = response.data.result || [];
-        const paymentTime = new Date(payment.createdAt).getTime();
+        const paymentTime = new Date(payment.createdAt || payment.created_at).getTime();
+        const decimals = coin.decimals || 18;
 
         for (const tx of transactions) {
             const txTime = parseInt(tx.timeStamp) * 1000;
 
-            // Check if transaction is recent and incoming (native AVAX)
-            // For native AVAX, value is in Wei (18 decimals)
+            // Check if transaction is recent and incoming
             if (txTime >= paymentTime &&
                 tx.to.toLowerCase() === payment.address.toLowerCase() &&
                 tx.value !== '0') {
 
-                // AVAX has 18 decimals (Wei)
-                const receivedAmount = parseFloat(tx.value) / 1e18;
+                const receivedAmount = parseFloat(tx.value) / Math.pow(10, decimals);
 
                 // Check if amount matches (with small tolerance)
-                const tolerance = 0.01; // 0.01 AVAX tolerance
+                const tolerance = 0.01;
                 if (Math.abs(receivedAmount - payment.amount) <= tolerance || receivedAmount >= payment.amount) {
                     return {
                         confirmed: true,
@@ -442,6 +514,9 @@ function generateQRData(method, address, amount) {
         return address; // Simple address for QR code
     } else if (method === 'avax') {
         // For AVAX, use simple address (some wallets support ethereum: format)
+        return address; // Simple address for QR code
+    } else if (method === 'usdc-avax') {
+        // For USDC, use simple address (some wallets support ethereum: format)
         return address; // Simple address for QR code
     }
     return address;
@@ -493,6 +568,26 @@ app.get('/api/health', (req, res) => {
     });
 });
 
+// Admin API routes
+app.use('/api/admin', adminRoutes);
+
+// Admin pages
+app.get('/admin/login', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'admin', 'login.html'));
+});
+
+app.get('/admin', requireAuthHTML, (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'admin', 'dashboard.html'));
+});
+
+app.get('/admin/coins', requireAuthHTML, (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'admin', 'coins.html'));
+});
+
+app.get('/admin/payments', requireAuthHTML, (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'admin', 'payments.html'));
+});
+
 // Serve frontend
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
@@ -508,7 +603,13 @@ app.use((err, req, res, next) => {
 app.listen(PORT, () => {
     console.log(`🚀 Crypto POS Server running on port ${PORT}`);
     console.log(`📱 Access the POS at http://localhost:${PORT}`);
-    validateConfig();
+    console.log(`🔐 Access the Admin Panel at http://localhost:${PORT}/admin`);
+    console.log(`⚠️  Default admin credentials: admin / admin123`);
+    console.log(`⚠️  PLEASE CHANGE THE DEFAULT PASSWORD IMMEDIATELY!`);
+
+    // Validate configuration
+    const enabledCoins = db.getEnabledCoins();
+    console.log(`✅ ${enabledCoins.length} coin(s) enabled and ready`);
 });
 
 // Cleanup interval (every 10 minutes)

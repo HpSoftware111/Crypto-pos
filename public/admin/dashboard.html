@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard - Crypto POS</title>
+    <link rel="stylesheet" href="admin.css">
+</head>
+<body>
+    <div class="admin-header">
+        <h1>🔐 Crypto POS Admin</h1>
+        <div class="admin-nav">
+            <a href="/admin" class="active">Dashboard</a>
+            <a href="/admin/coins">Coins</a>
+            <a href="/admin/payments">Payments</a>
+            <a href="/" target="_blank">POS View</a>
+            <button class="btn btn-secondary" onclick="logout()" style="margin-left: 10px;">Logout</button>
+        </div>
+    </div>
+
+    <div class="admin-container">
+        <h2 style="margin-bottom: 20px;">Dashboard Overview</h2>
+        
+        <div class="stats-grid" id="statsGrid">
+            <div class="stat-card">
+                <h3>Total Payments</h3>
+                <div class="value" id="totalPayments">-</div>
+            </div>
+            <div class="stat-card">
+                <h3>Confirmed Payments</h3>
+                <div class="value" id="confirmedPayments">-</div>
+            </div>
+            <div class="stat-card">
+                <h3>Pending Payments</h3>
+                <div class="value" id="pendingPayments">-</div>
+            </div>
+            <div class="stat-card">
+                <h3>Total Amount</h3>
+                <div class="value" id="totalAmount">-</div>
+            </div>
+            <div class="stat-card">
+                <h3>Enabled Coins</h3>
+                <div class="value" id="enabledCoins">-</div>
+            </div>
+            <div class="stat-card">
+                <h3>Total Coins</h3>
+                <div class="value" id="totalCoins">-</div>
+            </div>
+        </div>
+
+        <div class="table-container" style="margin-top: 30px;">
+            <h3 style="padding: 20px; margin: 0; border-bottom: 1px solid #e9ecef;">Recent Payments</h3>
+            <div id="recentPayments" class="loading">Loading...</div>
+        </div>
+    </div>
+
+    <script>
+        // Check authentication
+        fetch('/api/admin/auth/status', { credentials: 'include' })
+            .then(res => res.json())
+            .then(data => {
+                if (!data.authenticated) {
+                    window.location.href = '/admin/login';
+                } else {
+                    loadDashboard();
+                }
+            });
+
+        async function loadDashboard() {
+            try {
+                const [statsRes, paymentsRes] = await Promise.all([
+                    fetch('/api/admin/stats', { credentials: 'include' }),
+                    fetch('/api/admin/payments?limit=10', { credentials: 'include' })
+                ]);
+
+                const stats = await statsRes.json();
+                const paymentsData = await paymentsRes.json();
+
+                // Update stats
+                document.getElementById('totalPayments').textContent = stats.payments.total;
+                document.getElementById('confirmedPayments').textContent = stats.payments.confirmed;
+                document.getElementById('pendingPayments').textContent = stats.payments.pending;
+                document.getElementById('totalAmount').textContent = formatAmount(stats.payments.totalAmount);
+                document.getElementById('enabledCoins').textContent = stats.coins.enabled;
+                document.getElementById('totalCoins').textContent = stats.coins.total;
+
+                // Display recent payments
+                const paymentsContainer = document.getElementById('recentPayments');
+                if (paymentsData.payments && paymentsData.payments.length > 0) {
+                    paymentsContainer.innerHTML = `
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Payment ID</th>
+                                    <th>Coin</th>
+                                    <th>Amount</th>
+                                    <th>Status</th>
+                                    <th>Date</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${paymentsData.payments.map(p => `
+                                    <tr>
+                                        <td>${p.payment_id.substring(0, 20)}...</td>
+                                        <td>${p.symbol || p.coin_name}</td>
+                                        <td>${p.amount} ${p.symbol || ''}</td>
+                                        <td><span class="status-badge status-${p.status}">${p.status}</span></td>
+                                        <td>${new Date(p.created_at).toLocaleString()}</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    `;
+                } else {
+                    paymentsContainer.innerHTML = '<div style="padding: 40px; text-align: center; color: #999;">No payments yet</div>';
+                }
+            } catch (error) {
+                console.error('Error loading dashboard:', error);
+            }
+        }
+
+        function formatAmount(amount) {
+            if (!amount) return '0.00';
+            return parseFloat(amount).toFixed(2);
+        }
+
+        function logout() {
+            fetch('/api/admin/logout', { method: 'POST', credentials: 'include' })
+                .then(() => {
+                    window.location.href = '/admin/login';
+                });
+        }
+
+        // Refresh every 30 seconds
+        setInterval(loadDashboard, 30000);
+    </script>
+</body>
+</html>
+
