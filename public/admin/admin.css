@@ -21,8 +21,21 @@ body {
     box-shadow: 0 2px 10px rgba(0,0,0,0.1);
 }
 
+.admin-header .header-left {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+.admin-header .logo {
+    height: 40px;
+    width: auto;
+    object-fit: contain;
+}
+
 .admin-header h1 {
     font-size: 24px;
+    margin: 0;
 }
 
 .admin-nav {
