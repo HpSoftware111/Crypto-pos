@@ -4,21 +4,48 @@ const bcrypt = require('bcrypt');
 
 class DatabaseManager {
     constructor() {
-        const dbPath = path.join(__dirname, 'data.json');
-        this.dbPath = dbPath;
+        // Check if we're in a serverless environment (Vercel, etc.)
+        const isServerless = process.env.VERCEL || process.env.VERCEL_ENV || process.env.AWS_LAMBDA_FUNCTION_NAME;
+
+        // Use file storage only for local development
+        this.useFileStorage = !isServerless;
+        this.dbPath = this.useFileStorage ? path.join(__dirname, 'data.json') : null;
+        this.defaultDataPath = path.join(__dirname, 'data.json'); // For initialization
+
+        // In-memory storage (primary storage)
+        this.data = null;
+
         this.initDatabase();
     }
 
     initDatabase() {
-        // Create data directory if it doesn't exist
-        const dataDir = path.dirname(this.dbPath);
-        if (!fs.existsSync(dataDir)) {
-            fs.mkdirSync(dataDir, { recursive: true });
+        // Try to load from existing file first (if file storage is enabled and file exists)
+        if (this.useFileStorage && this.dbPath && fs.existsSync(this.dbPath)) {
+            try {
+                const fileContent = fs.readFileSync(this.dbPath, 'utf8');
+                this.data = JSON.parse(fileContent);
+                console.log('Loaded database from file');
+            } catch (error) {
+                console.warn('Error reading database file:', error.message);
+                this.data = null;
+            }
         }
 
-        // Initialize JSON database structure
-        if (!fs.existsSync(this.dbPath)) {
-            const initialData = {
+        // Try to load from default data.json file in repo (for serverless initialization)
+        if (!this.data && fs.existsSync(this.defaultDataPath)) {
+            try {
+                const fileContent = fs.readFileSync(this.defaultDataPath, 'utf8');
+                this.data = JSON.parse(fileContent);
+                console.log('Loaded database from default file');
+            } catch (error) {
+                console.warn('Could not load default database file:', error.message);
+                this.data = null;
+            }
+        }
+
+        // Initialize if no data exists
+        if (!this.data) {
+            this.data = {
                 coins: [],
                 admin_users: [],
                 payments: [],
@@ -28,51 +55,59 @@ class DatabaseManager {
                     created_at: new Date().toISOString()
                 }
             };
-            this.writeData(initialData);
-            this.migrateExistingCoins();
-            this.initDefaultAdmin();
-        } else {
-            // Ensure all required tables exist
-            const data = this.readData();
-            if (!data.coins) data.coins = [];
-            if (!data.admin_users) data.admin_users = [];
-            if (!data.payments) data.payments = [];
-            if (!data.admin_logs) data.admin_logs = [];
-            this.writeData(data);
-
-            // Initialize default admin if no users exist
-            if (data.admin_users.length === 0) {
-                this.initDefaultAdmin();
-            }
-
-            // Migrate coins if empty
-            if (data.coins.length === 0) {
-                this.migrateExistingCoins();
-            }
         }
+
+        // Ensure all required tables exist
+        if (!this.data.coins) this.data.coins = [];
+        if (!this.data.admin_users) this.data.admin_users = [];
+        if (!this.data.payments) this.data.payments = [];
+        if (!this.data.admin_logs) this.data.admin_logs = [];
+
+        // Initialize default admin if no users exist
+        if (this.data.admin_users.length === 0) {
+            this.initDefaultAdmin();
+        }
+
+        // Migrate coins if empty
+        if (this.data.coins.length === 0) {
+            this.migrateExistingCoins();
+        }
+
+        // Try to save initial data (will only work if file storage is enabled and writable)
+        this.writeData(this.data);
     }
 
     readData() {
-        try {
-            const fileContent = fs.readFileSync(this.dbPath, 'utf8');
-            return JSON.parse(fileContent);
-        } catch (error) {
-            console.error('Error reading database:', error);
-            return {
+        // Always return in-memory data
+        if (this.data === null) {
+            // Fallback to empty structure
+            this.data = {
                 coins: [],
                 admin_users: [],
                 payments: [],
                 admin_logs: []
             };
         }
+        return this.data;
     }
 
     writeData(data) {
-        try {
-            fs.writeFileSync(this.dbPath, JSON.stringify(data, null, 2), 'utf8');
-        } catch (error) {
-            console.error('Error writing database:', error);
-            throw error;
+        // Always update in-memory cache (primary storage)
+        this.data = JSON.parse(JSON.stringify(data)); // Deep copy
+
+        // Only try to write to file if file storage is enabled
+        if (this.useFileStorage && this.dbPath) {
+            try {
+                const dataDir = path.dirname(this.dbPath);
+                if (!fs.existsSync(dataDir)) {
+                    fs.mkdirSync(dataDir, { recursive: true });
+                }
+                fs.writeFileSync(this.dbPath, JSON.stringify(data, null, 2), 'utf8');
+            } catch (error) {
+                // Silently fail on file write errors (serverless environments)
+                // In-memory storage will still work
+                console.warn('Database write warning (using in-memory only):', error.message);
+            }
         }
     }
 
@@ -464,7 +499,7 @@ class DatabaseManager {
     }
 
     close() {
-        // No-op for JSON storage
+        // No-op for in-memory storage
     }
 }
 
