@@ -1,16 +1,18 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Coin Management - Crypto POS</title>
     <link rel="stylesheet" href="admin.css">
 </head>
+
 <body>
     <div class="admin-header">
         <div class="header-left">
             <img src="../logo.png" alt="Logo" class="logo">
-            <h1>🔐 Crypto POS Admin</h1>
+            <h1>Crypto POS Admin</h1>
         </div>
         <div class="admin-nav">
             <a href="/admin">Dashboard</a>
@@ -43,7 +45,9 @@
                     </tr>
                 </thead>
                 <tbody id="coinsTableBody">
-                    <tr><td colspan="7" class="loading">Loading coins...</td></tr>
+                    <tr>
+                        <td colspan="7" class="loading">Loading coins...</td>
+                    </tr>
                 </tbody>
             </table>
         </div>
@@ -241,7 +245,7 @@
             try {
                 const url = editingCoinId ? `/api/admin/coins/${editingCoinId}` : '/api/admin/coins';
                 const method = editingCoinId ? 'PUT' : 'POST';
-                
+
                 const res = await fetch(url, {
                     method,
                     headers: { 'Content-Type': 'application/json' },
@@ -327,5 +331,5 @@
         });
     </script>
 </body>
-</html>
 
+</html>

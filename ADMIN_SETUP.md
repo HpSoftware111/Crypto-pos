@@ -2,7 +2,7 @@
 
 ## ✅ Implementation Complete!
 
-A comprehensive admin management system has been implemented with SQLite database, authentication, and full admin UI.
+A comprehensive admin management system has been implemented with JSON database storage, authentication, and full admin UI.
 
 ## 🚀 Quick Start
 
@@ -13,9 +13,10 @@ npm install
 ```
 
 Required packages:
-- `better-sqlite3` - SQLite database
 - `bcrypt` - Password hashing
 - `express-session` - Session management
+
+Note: Database is now stored in JSON format (`data.json`) for compatibility with serverless platforms like Vercel.
 
 ### 2. Start the Server
 
@@ -38,12 +39,13 @@ npm start
 
 ## 📋 Features Implemented
 
-### ✅ Database (SQLite)
-- Persistent storage for all configuration
+### ✅ Database (JSON)
+- Persistent storage for all configuration in JSON format
 - Automatic migration of existing coins
 - Payment history tracking
 - Admin user management
 - Activity logging
+- Compatible with serverless platforms (Vercel, etc.)
 
 ### ✅ Authentication
 - Secure session-based authentication
@@ -95,7 +97,7 @@ crypto-pos/
 │   │   └── admin.css      # Admin styles
 │   ├── index.html          # POS frontend (updated)
 │   └── app.js              # POS logic (updated)
-└── crypto_pos.db           # SQLite database (auto-created)
+└── data.json                # JSON database (auto-created)
 ```
 
 ## 🔐 Security Features

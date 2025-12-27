@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -13,14 +14,16 @@
             min-height: 100vh;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         }
+
         .login-container {
             background: white;
             padding: 40px;
             border-radius: 20px;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
             width: 100%;
             max-width: 400px;
         }
+
         .login-container .logo {
             display: block;
             margin: 0 auto 20px;
@@ -28,20 +31,24 @@
             width: auto;
             object-fit: contain;
         }
+
         .login-container h1 {
             text-align: center;
             margin-bottom: 30px;
             color: #333;
         }
+
         .form-group {
             margin-bottom: 20px;
         }
+
         .form-group label {
             display: block;
             margin-bottom: 8px;
             color: #555;
             font-weight: 500;
         }
+
         .form-group input {
             width: 100%;
             padding: 12px;
@@ -50,10 +57,12 @@
             font-size: 16px;
             transition: border-color 0.3s;
         }
+
         .form-group input:focus {
             outline: none;
             border-color: #667eea;
         }
+
         .btn-login {
             width: 100%;
             padding: 14px;
@@ -66,13 +75,16 @@
             cursor: pointer;
             transition: transform 0.2s;
         }
+
         .btn-login:hover {
             transform: translateY(-2px);
         }
+
         .btn-login:disabled {
             opacity: 0.6;
             cursor: not-allowed;
         }
+
         .error-message {
             background: #fee;
             color: #c33;
@@ -81,15 +93,17 @@
             margin-bottom: 20px;
             display: none;
         }
+
         .error-message.show {
             display: block;
         }
     </style>
 </head>
+
 <body>
     <div class="login-container">
         <img src="../logo.png" alt="Logo" class="logo">
-        <h1>🔐 Admin Login</h1>
+        <h1>Admin Login</h1>
         <div class="error-message" id="errorMessage"></div>
         <form id="loginForm">
             <div class="form-group">
@@ -107,7 +121,7 @@
     <script>
         document.getElementById('loginForm').addEventListener('submit', async (e) => {
             e.preventDefault();
-            
+
             const username = document.getElementById('username').value;
             const password = document.getElementById('password').value;
             const loginBtn = document.getElementById('loginBtn');
@@ -152,5 +166,5 @@
             });
     </script>
 </body>
-</html>
 
+</html>

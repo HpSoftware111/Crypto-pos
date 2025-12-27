@@ -1,99 +1,100 @@
-const Database = require('better-sqlite3');
+const fs = require('fs');
 const path = require('path');
 const bcrypt = require('bcrypt');
 
 class DatabaseManager {
     constructor() {
-        const dbPath = path.join(__dirname, 'crypto_pos.db');
-        this.db = new Database(dbPath);
-        this.db.pragma('journal_mode = WAL'); // Better performance
+        const dbPath = path.join(__dirname, 'data.json');
+        this.dbPath = dbPath;
         this.initDatabase();
     }
 
     initDatabase() {
-        // Create coins table
-        this.db.exec(`
-            CREATE TABLE IF NOT EXISTS coins (
-                id TEXT PRIMARY KEY,
-                name TEXT NOT NULL,
-                symbol TEXT NOT NULL,
-                enabled INTEGER DEFAULT 1,
-                network TEXT DEFAULT 'mainnet',
-                wallet_address TEXT,
-                api_url TEXT,
-                api_key TEXT,
-                contract_address TEXT,
-                confirmations_required INTEGER DEFAULT 1,
-                icon TEXT,
-                decimals INTEGER DEFAULT 18,
-                method_code TEXT NOT NULL,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-            )
-        `);
+        // Create data directory if it doesn't exist
+        const dataDir = path.dirname(this.dbPath);
+        if (!fs.existsSync(dataDir)) {
+            fs.mkdirSync(dataDir, { recursive: true });
+        }
 
-        // Create admin_users table
-        this.db.exec(`
-            CREATE TABLE IF NOT EXISTS admin_users (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                username TEXT UNIQUE NOT NULL,
-                password_hash TEXT NOT NULL,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                last_login DATETIME
-            )
-        `);
+        // Initialize JSON database structure
+        if (!fs.existsSync(this.dbPath)) {
+            const initialData = {
+                coins: [],
+                admin_users: [],
+                payments: [],
+                admin_logs: [],
+                _meta: {
+                    version: '1.0.0',
+                    created_at: new Date().toISOString()
+                }
+            };
+            this.writeData(initialData);
+            this.migrateExistingCoins();
+            this.initDefaultAdmin();
+        } else {
+            // Ensure all required tables exist
+            const data = this.readData();
+            if (!data.coins) data.coins = [];
+            if (!data.admin_users) data.admin_users = [];
+            if (!data.payments) data.payments = [];
+            if (!data.admin_logs) data.admin_logs = [];
+            this.writeData(data);
 
-        // Create payments table
-        this.db.exec(`
-            CREATE TABLE IF NOT EXISTS payments (
-                id TEXT PRIMARY KEY,
-                payment_id TEXT UNIQUE NOT NULL,
-                coin_id TEXT NOT NULL,
-                method TEXT NOT NULL,
-                amount REAL NOT NULL,
-                address TEXT NOT NULL,
-                status TEXT DEFAULT 'pending',
-                confirmed INTEGER DEFAULT 0,
-                tx_hash TEXT,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                confirmed_at DATETIME,
-                FOREIGN KEY (coin_id) REFERENCES coins(id)
-            )
-        `);
+            // Initialize default admin if no users exist
+            if (data.admin_users.length === 0) {
+                this.initDefaultAdmin();
+            }
 
-        // Create admin_logs table
-        this.db.exec(`
-            CREATE TABLE IF NOT EXISTS admin_logs (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                admin_id INTEGER,
-                action TEXT NOT NULL,
-                details TEXT,
-                ip_address TEXT,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (admin_id) REFERENCES admin_users(id)
-            )
-        `);
+            // Migrate coins if empty
+            if (data.coins.length === 0) {
+                this.migrateExistingCoins();
+            }
+        }
+    }
 
-        // Initialize default admin user if not exists
-        this.initDefaultAdmin();
+    readData() {
+        try {
+            const fileContent = fs.readFileSync(this.dbPath, 'utf8');
+            return JSON.parse(fileContent);
+        } catch (error) {
+            console.error('Error reading database:', error);
+            return {
+                coins: [],
+                admin_users: [],
+                payments: [],
+                admin_logs: []
+            };
+        }
+    }
 
-        // Migrate existing coins if database is empty
-        this.migrateExistingCoins();
+    writeData(data) {
+        try {
+            fs.writeFileSync(this.dbPath, JSON.stringify(data, null, 2), 'utf8');
+        } catch (error) {
+            console.error('Error writing database:', error);
+            throw error;
+        }
     }
 
     initDefaultAdmin() {
-        const adminExists = this.db.prepare('SELECT COUNT(*) as count FROM admin_users').get();
-        
-        if (adminExists.count === 0) {
+        const data = this.readData();
+
+        if (data.admin_users.length === 0) {
             // Default admin: username='admin', password='admin123' (must be changed!)
             const defaultPassword = 'admin123';
             const passwordHash = bcrypt.hashSync(defaultPassword, 10);
-            
-            this.db.prepare(`
-                INSERT INTO admin_users (username, password_hash)
-                VALUES (?, ?)
-            `).run('admin', passwordHash);
-            
+
+            const admin = {
+                id: 1,
+                username: 'admin',
+                password_hash: passwordHash,
+                created_at: new Date().toISOString(),
+                last_login: null
+            };
+
+            data.admin_users.push(admin);
+            this.writeData(data);
+
             console.log('⚠️  Default admin user created:');
             console.log('   Username: admin');
             console.log('   Password: admin123');
@@ -102,9 +103,9 @@ class DatabaseManager {
     }
 
     migrateExistingCoins() {
-        const coinCount = this.db.prepare('SELECT COUNT(*) as count FROM coins').get();
-        
-        if (coinCount.count === 0) {
+        const data = this.readData();
+
+        if (data.coins.length === 0) {
             // Migrate existing coins from server.js
             const defaultCoins = [
                 {
@@ -120,7 +121,9 @@ class DatabaseManager {
                     confirmations_required: 1,
                     icon: 'btc.png',
                     decimals: 8,
-                    method_code: 'btc'
+                    method_code: 'btc',
+                    created_at: new Date().toISOString(),
+                    updated_at: new Date().toISOString()
                 },
                 {
                     id: 'usdt-avax',
@@ -135,7 +138,9 @@ class DatabaseManager {
                     confirmations_required: 1,
                     icon: 'USDT.jfif',
                     decimals: 6,
-                    method_code: 'usdt-avax'
+                    method_code: 'usdt-avax',
+                    created_at: new Date().toISOString(),
+                    updated_at: new Date().toISOString()
                 },
                 {
                     id: 'avax',
@@ -150,7 +155,9 @@ class DatabaseManager {
                     confirmations_required: 1,
                     icon: 'avax.png',
                     decimals: 18,
-                    method_code: 'avax'
+                    method_code: 'avax',
+                    created_at: new Date().toISOString(),
+                    updated_at: new Date().toISOString()
                 },
                 {
                     id: 'usdc-avax',
@@ -165,206 +172,235 @@ class DatabaseManager {
                     confirmations_required: 1,
                     icon: 'usdc.svg',
                     decimals: 6,
-                    method_code: 'usdc-avax'
+                    method_code: 'usdc-avax',
+                    created_at: new Date().toISOString(),
+                    updated_at: new Date().toISOString()
                 }
             ];
 
-            const insertCoin = this.db.prepare(`
-                INSERT INTO coins (
-                    id, name, symbol, enabled, network, wallet_address, api_url, api_key,
-                    contract_address, confirmations_required, icon, decimals, method_code
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            `);
-
-            const insertMany = this.db.transaction((coins) => {
-                for (const coin of coins) {
-                    insertCoin.run(
-                        coin.id, coin.name, coin.symbol, coin.enabled, coin.network,
-                        coin.wallet_address, coin.api_url, coin.api_key,
-                        coin.contract_address, coin.confirmations_required,
-                        coin.icon, coin.decimals, coin.method_code
-                    );
-                }
-            });
-
-            insertMany(defaultCoins);
+            data.coins = defaultCoins;
+            this.writeData(data);
             console.log('✅ Migrated existing coins to database');
         }
     }
 
     // Coin management methods
     getAllCoins() {
-        return this.db.prepare('SELECT * FROM coins ORDER BY name').all();
+        const data = this.readData();
+        return data.coins.sort((a, b) => a.name.localeCompare(b.name));
     }
 
     getEnabledCoins() {
-        return this.db.prepare('SELECT * FROM coins WHERE enabled = 1 ORDER BY name').all();
+        const data = this.readData();
+        return data.coins.filter(coin => coin.enabled === 1).sort((a, b) => a.name.localeCompare(b.name));
     }
 
     getCoinById(id) {
-        return this.db.prepare('SELECT * FROM coins WHERE id = ?').get(id);
+        const data = this.readData();
+        return data.coins.find(coin => coin.id === id) || null;
     }
 
     getCoinByMethodCode(methodCode) {
-        return this.db.prepare('SELECT * FROM coins WHERE method_code = ? AND enabled = 1').get(methodCode);
+        const data = this.readData();
+        return data.coins.find(coin => coin.method_code === methodCode && coin.enabled === 1) || null;
     }
 
     createCoin(coinData) {
-        const stmt = this.db.prepare(`
-            INSERT INTO coins (
-                id, name, symbol, enabled, network, wallet_address, api_url, api_key,
-                contract_address, confirmations_required, icon, decimals, method_code
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `);
+        const data = this.readData();
 
-        stmt.run(
-            coinData.id, coinData.name, coinData.symbol, coinData.enabled || 1,
-            coinData.network || 'mainnet', coinData.wallet_address, coinData.api_url,
-            coinData.api_key, coinData.contract_address, coinData.confirmations_required || 1,
-            coinData.icon, coinData.decimals || 18, coinData.method_code
-        );
+        const coin = {
+            id: coinData.id,
+            name: coinData.name,
+            symbol: coinData.symbol,
+            enabled: coinData.enabled !== undefined ? coinData.enabled : 1,
+            network: coinData.network || 'mainnet',
+            wallet_address: coinData.wallet_address || null,
+            api_url: coinData.api_url || null,
+            api_key: coinData.api_key || null,
+            contract_address: coinData.contract_address || null,
+            confirmations_required: coinData.confirmations_required || 1,
+            icon: coinData.icon || null,
+            decimals: coinData.decimals || 18,
+            method_code: coinData.method_code,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+        };
 
-        return this.getCoinById(coinData.id);
+        data.coins.push(coin);
+        this.writeData(data);
+
+        return coin;
     }
 
     updateCoin(id, coinData) {
-        const fields = [];
-        const values = [];
+        const data = this.readData();
+        const coinIndex = data.coins.findIndex(coin => coin.id === id);
 
+        if (coinIndex === -1) {
+            return null;
+        }
+
+        const coin = data.coins[coinIndex];
         Object.keys(coinData).forEach(key => {
             if (key !== 'id' && coinData[key] !== undefined) {
-                fields.push(`${key} = ?`);
-                values.push(coinData[key]);
+                coin[key] = coinData[key];
             }
         });
+        coin.updated_at = new Date().toISOString();
 
-        if (fields.length === 0) return this.getCoinById(id);
-
-        fields.push('updated_at = CURRENT_TIMESTAMP');
-        values.push(id);
-
-        const sql = `UPDATE coins SET ${fields.join(', ')} WHERE id = ?`;
-        this.db.prepare(sql).run(...values);
-
-        return this.getCoinById(id);
+        this.writeData(data);
+        return coin;
     }
 
     deleteCoin(id) {
-        return this.db.prepare('DELETE FROM coins WHERE id = ?').run(id);
+        const data = this.readData();
+        const coinIndex = data.coins.findIndex(coin => coin.id === id);
+
+        if (coinIndex === -1) {
+            return false;
+        }
+
+        data.coins.splice(coinIndex, 1);
+        this.writeData(data);
+        return true;
     }
 
     toggleCoinEnabled(id, enabled) {
-        this.db.prepare('UPDATE coins SET enabled = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
-            .run(enabled ? 1 : 0, id);
-        return this.getCoinById(id);
+        const data = this.readData();
+        const coin = data.coins.find(coin => coin.id === id);
+
+        if (!coin) {
+            return null;
+        }
+
+        coin.enabled = enabled ? 1 : 0;
+        coin.updated_at = new Date().toISOString();
+        this.writeData(data);
+
+        return coin;
     }
 
     // Payment management methods
     createPayment(paymentData) {
-        const stmt = this.db.prepare(`
-            INSERT INTO payments (
-                id, payment_id, coin_id, method, amount, address, status, confirmed
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        `);
+        const data = this.readData();
 
-        stmt.run(
-            paymentData.id || paymentData.paymentId,
-            paymentData.paymentId,
-            paymentData.coinId,
-            paymentData.method,
-            paymentData.amount,
-            paymentData.address,
-            paymentData.status || 'pending',
-            paymentData.confirmed ? 1 : 0
-        );
+        const payment = {
+            id: paymentData.id || paymentData.paymentId,
+            payment_id: paymentData.paymentId,
+            coin_id: paymentData.coinId,
+            method: paymentData.method,
+            amount: paymentData.amount,
+            address: paymentData.address,
+            status: paymentData.status || 'pending',
+            confirmed: paymentData.confirmed ? 1 : 0,
+            tx_hash: null,
+            created_at: new Date().toISOString(),
+            confirmed_at: null
+        };
 
-        return this.getPaymentById(paymentData.paymentId);
+        data.payments.push(payment);
+        this.writeData(data);
+
+        return payment;
     }
 
     getPaymentById(paymentId) {
-        return this.db.prepare('SELECT * FROM payments WHERE payment_id = ?').get(paymentId);
+        const data = this.readData();
+        return data.payments.find(payment => payment.payment_id === paymentId) || null;
     }
 
     updatePayment(paymentId, updates) {
-        const fields = [];
-        const values = [];
+        const data = this.readData();
+        const payment = data.payments.find(p => p.payment_id === paymentId);
+
+        if (!payment) {
+            return null;
+        }
 
         Object.keys(updates).forEach(key => {
             if (updates[key] !== undefined) {
                 if (key === 'confirmed') {
-                    fields.push(`${key} = ?`);
-                    values.push(updates[key] ? 1 : 0);
+                    payment[key] = updates[key] ? 1 : 0;
                 } else {
-                    fields.push(`${key} = ?`);
-                    values.push(updates[key]);
+                    payment[key] = updates[key];
                 }
             }
         });
 
-        if (fields.length === 0) return this.getPaymentById(paymentId);
-
-        values.push(paymentId);
-        const sql = `UPDATE payments SET ${fields.join(', ')} WHERE payment_id = ?`;
-        this.db.prepare(sql).run(...values);
-
-        return this.getPaymentById(paymentId);
+        this.writeData(data);
+        return payment;
     }
 
     getPayments(limit = 100, offset = 0, filters = {}) {
-        let sql = 'SELECT p.*, c.name as coin_name, c.symbol FROM payments p LEFT JOIN coins c ON p.coin_id = c.id WHERE 1=1';
-        const params = [];
+        const data = this.readData();
+        let payments = [...data.payments];
 
+        // Apply filters
         if (filters.status) {
-            sql += ' AND p.status = ?';
-            params.push(filters.status);
+            payments = payments.filter(p => p.status === filters.status);
         }
 
         if (filters.coinId) {
-            sql += ' AND p.coin_id = ?';
-            params.push(filters.coinId);
+            payments = payments.filter(p => p.coin_id === filters.coinId);
         }
 
         if (filters.startDate) {
-            sql += ' AND p.created_at >= ?';
-            params.push(filters.startDate);
+            payments = payments.filter(p => p.created_at >= filters.startDate);
         }
 
         if (filters.endDate) {
-            sql += ' AND p.created_at <= ?';
-            params.push(filters.endDate);
+            payments = payments.filter(p => p.created_at <= filters.endDate);
         }
 
-        sql += ' ORDER BY p.created_at DESC LIMIT ? OFFSET ?';
-        params.push(limit, offset);
+        // Sort by created_at descending
+        payments.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 
-        return this.db.prepare(sql).all(...params);
+        // Add coin information
+        payments = payments.map(payment => {
+            const coin = data.coins.find(c => c.id === payment.coin_id);
+            return {
+                ...payment,
+                coin_name: coin ? coin.name : null,
+                symbol: coin ? coin.symbol : null
+            };
+        });
+
+        // Apply limit and offset
+        return payments.slice(offset, offset + limit);
     }
 
     getPaymentStats() {
-        const total = this.db.prepare('SELECT COUNT(*) as count FROM payments').get();
-        const confirmed = this.db.prepare('SELECT COUNT(*) as count FROM payments WHERE confirmed = 1').get();
-        const totalAmount = this.db.prepare('SELECT SUM(amount) as total FROM payments WHERE confirmed = 1').get();
+        const data = this.readData();
+        const payments = data.payments;
+
+        const total = payments.length;
+        const confirmed = payments.filter(p => p.confirmed === 1).length;
+        const totalAmount = payments
+            .filter(p => p.confirmed === 1)
+            .reduce((sum, p) => sum + (p.amount || 0), 0);
 
         return {
-            total: total.count,
-            confirmed: confirmed.count,
-            pending: total.count - confirmed.count,
-            totalAmount: totalAmount.total || 0
+            total,
+            confirmed,
+            pending: total - confirmed,
+            totalAmount
         };
     }
 
     // Admin authentication methods
     authenticateAdmin(username, password) {
-        const admin = this.db.prepare('SELECT * FROM admin_users WHERE username = ?').get(username);
-        
+        const data = this.readData();
+        const admin = data.admin_users.find(u => u.username === username);
+
         if (!admin) {
             return null;
         }
 
         if (bcrypt.compareSync(password, admin.password_hash)) {
             // Update last login
-            this.db.prepare('UPDATE admin_users SET last_login = CURRENT_TIMESTAMP WHERE id = ?')
-                .run(admin.id);
+            admin.last_login = new Date().toISOString();
+            this.writeData(data);
+
             return { id: admin.id, username: admin.username };
         }
 
@@ -372,31 +408,63 @@ class DatabaseManager {
     }
 
     changeAdminPassword(adminId, newPassword) {
+        const data = this.readData();
+        const admin = data.admin_users.find(u => u.id === adminId);
+
+        if (!admin) {
+            return false;
+        }
+
         const passwordHash = bcrypt.hashSync(newPassword, 10);
-        this.db.prepare('UPDATE admin_users SET password_hash = ? WHERE id = ?')
-            .run(passwordHash, adminId);
+        admin.password_hash = passwordHash;
+        this.writeData(data);
+
+        return true;
     }
 
     // Admin logging
     logAdminAction(adminId, action, details, ipAddress) {
-        this.db.prepare(`
-            INSERT INTO admin_logs (admin_id, action, details, ip_address)
-            VALUES (?, ?, ?, ?)
-        `).run(adminId, action, JSON.stringify(details), ipAddress);
+        const data = this.readData();
+
+        // Get next ID
+        const nextId = data.admin_logs.length > 0
+            ? Math.max(...data.admin_logs.map(l => l.id)) + 1
+            : 1;
+
+        const log = {
+            id: nextId,
+            admin_id: adminId,
+            action: action,
+            details: typeof details === 'string' ? details : JSON.stringify(details),
+            ip_address: ipAddress,
+            created_at: new Date().toISOString()
+        };
+
+        data.admin_logs.push(log);
+        this.writeData(data);
     }
 
     getAdminLogs(limit = 100) {
-        return this.db.prepare(`
-            SELECT l.*, u.username 
-            FROM admin_logs l 
-            LEFT JOIN admin_users u ON l.admin_id = u.id 
-            ORDER BY l.created_at DESC 
-            LIMIT ?
-        `).all(limit);
+        const data = this.readData();
+        let logs = [...data.admin_logs];
+
+        // Sort by created_at descending
+        logs.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
+        // Add username
+        logs = logs.map(log => {
+            const admin = data.admin_users.find(u => u.id === log.admin_id);
+            return {
+                ...log,
+                username: admin ? admin.username : null
+            };
+        });
+
+        return logs.slice(0, limit);
     }
 
     close() {
-        this.db.close();
+        // No-op for JSON storage
     }
 }
 
@@ -411,4 +479,3 @@ function getDatabase() {
 }
 
 module.exports = { getDatabase, DatabaseManager };
-

@@ -24,3 +24,9 @@ Thumbs.db
 dist/
 build/
 
+# Database files
+data.json
+crypto_pos.db
+crypto_pos.db-shm
+crypto_pos.db-wal
+
