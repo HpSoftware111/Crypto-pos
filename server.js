@@ -369,6 +369,9 @@ function generateQRData(method, address, amount) {
     } else if (method === 'usdc-avax') {
         // For USDC, use simple address (some wallets support ethereum: format)
         return address; // Simple address for QR code
+    } else if (method === 'AVAX0' || method === 'avax0') {
+        // For AVAX0 token, use simple address (some wallets support ethereum: format)
+        return address; // Simple address for QR code
     }
     return address;
 }

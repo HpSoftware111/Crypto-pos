@@ -210,6 +210,23 @@ class DatabaseManager {
                     method_code: 'usdc-avax',
                     created_at: new Date().toISOString(),
                     updated_at: new Date().toISOString()
+                },
+                {
+                    id: 'AVAX0',
+                    name: 'AVAX0',
+                    symbol: 'AVAX0',
+                    enabled: 1,
+                    network: 'mainnet',
+                    wallet_address: '0x0029B302c6a0858b5648302dA5F4b24b67fBb364',
+                    api_url: 'https://api.snowtrace.io/api',
+                    api_key: 'rs_ce1e170ba51f9f9bbe4ce524',
+                    contract_address: '0x91870B9c25C06E10Bcb88bdd0F7b43A13C2d7c41',
+                    confirmations_required: 1,
+                    icon: 'avax0.png',
+                    decimals: 18,
+                    method_code: 'AVAX0',
+                    created_at: new Date().toISOString(),
+                    updated_at: new Date().toISOString()
                 }
             ];
 
