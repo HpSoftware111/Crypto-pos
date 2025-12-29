@@ -8,56 +8,29 @@ const adminRoutes = require('./routes/admin');
 const { requireAuthHTML } = require('./middleware/auth');
 
 const app = express();
-const PORT = process.env.PORT || 3000;
-
-// Trust proxy (required for Vercel and other reverse proxies)
-// This ensures req.protocol and req.secure are set correctly
-app.set('trust proxy', 1);
+const PORT = 3000;
 
 // Initialize database
 const db = getDatabase();
 
-// Detect production environment
-const isProduction = process.env.NODE_ENV === 'production' || process.env.VERCEL === '1';
-const isHTTPS = isProduction || process.env.HTTPS === 'true';
-
-// Determine sameSite setting
-// 'lax' works for same-domain (recommended for Vercel)
-// 'none' is required for cross-domain but needs secure: true
-const sameSiteSetting = process.env.COOKIE_SAMESITE || (isHTTPS ? 'lax' : 'lax');
-
-// CORS configuration
-const allowedOrigins = process.env.ALLOWED_ORIGINS 
-    ? process.env.ALLOWED_ORIGINS.split(',').map(origin => origin.trim())
-    : true; // Allow all origins in development, restrict in production
-
+// Middleware
 app.use(cors({
-    origin: allowedOrigins,
-    credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization']
+    origin: true,
+    credentials: true
 }));
-
 app.use(express.json());
 app.use(express.static('public'));
 
-// Session configuration - optimized for Vercel/serverless
+// Session configuration
 app.use(session({
     secret: process.env.SESSION_SECRET || 'crypto-pos-secret-key-change-in-production',
     resave: false,
     saveUninitialized: false,
-    name: 'crypto-pos.sid', // Custom session name
     cookie: {
-        secure: isHTTPS, // true in production (HTTPS required on Vercel)
+        secure: false, // Set to true in production with HTTPS
         httpOnly: true,
-        maxAge: 24 * 60 * 60 * 1000, // 24 hours
-        sameSite: sameSiteSetting, // 'lax' for same-domain, 'none' for cross-domain (requires secure: true)
-        path: '/', // Ensure cookie is available for all paths
-        domain: process.env.COOKIE_DOMAIN || undefined // Set if using custom domain
-    },
-    // For serverless environments, we rely on cookie-based sessions
-    // The session data is stored in the cookie itself (signed and encrypted)
-    rolling: true // Reset expiration on activity to keep session alive
+        maxAge: 24 * 60 * 60 * 1000 // 24 hours
+    }
 }));
 
 // Store active payment requests (in-memory for quick access, also stored in DB)
@@ -396,9 +369,6 @@ function generateQRData(method, address, amount) {
     } else if (method === 'usdc-avax') {
         // For USDC, use simple address (some wallets support ethereum: format)
         return address; // Simple address for QR code
-    } else if (method === 'AVAX0' || method === 'avax0') {
-        // For AVAX0 token, use simple address (some wallets support ethereum: format)
-        return address; // Simple address for QR code
     }
     return address;
 }
@@ -446,37 +416,6 @@ app.get('/api/health', (req, res) => {
         status: 'ok',
         timestamp: new Date().toISOString(),
         activePayments: activePayments.size
-    });
-});
-
-// Session debug endpoint (for troubleshooting - remove or protect in production)
-app.get('/api/debug/session', (req, res) => {
-    if (process.env.NODE_ENV === 'production' && process.env.ENABLE_DEBUG !== 'true') {
-        return res.status(403).json({ error: 'Debug endpoint disabled in production' });
-    }
-
-    res.json({
-        hasSession: !!req.session,
-        sessionId: req.sessionID,
-        sessionData: req.session ? {
-            adminId: req.session.adminId,
-            username: req.session.username
-        } : null,
-        cookies: req.cookies,
-        headers: {
-            cookie: req.headers.cookie ? 'present' : 'missing',
-            'user-agent': req.headers['user-agent'],
-            origin: req.headers.origin,
-            referer: req.headers.referer
-        },
-        protocol: req.protocol,
-        secure: req.secure,
-        hostname: req.hostname,
-        environment: {
-            nodeEnv: process.env.NODE_ENV,
-            vercel: process.env.VERCEL,
-            https: process.env.HTTPS
-        }
     });
 });
 
