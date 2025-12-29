@@ -8,29 +8,51 @@ const adminRoutes = require('./routes/admin');
 const { requireAuthHTML } = require('./middleware/auth');
 
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
+
+// Trust proxy (required for Vercel and other reverse proxies)
+// This ensures req.protocol and req.secure are set correctly
+app.set('trust proxy', 1);
 
 // Initialize database
 const db = getDatabase();
 
+// Detect production environment
+const isProduction = process.env.NODE_ENV === 'production' || process.env.VERCEL === '1';
+const isHTTPS = isProduction || process.env.HTTPS === 'true';
+
+// Determine sameSite setting
+// 'lax' works for same-domain (recommended for Vercel)
+// 'none' is required for cross-domain but needs secure: true
+const sameSiteSetting = process.env.COOKIE_SAMESITE || (isHTTPS ? 'lax' : 'lax');
+
 // Middleware
 app.use(cors({
-    origin: true,
-    credentials: true
+    origin: process.env.ALLOWED_ORIGIN || true,
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization']
 }));
 app.use(express.json());
 app.use(express.static('public'));
 
-// Session configuration
+// Session configuration - optimized for Vercel/serverless
 app.use(session({
     secret: process.env.SESSION_SECRET || 'crypto-pos-secret-key-change-in-production',
     resave: false,
     saveUninitialized: false,
+    name: 'crypto-pos.sid', // Custom session name
     cookie: {
-        secure: false, // Set to true in production with HTTPS
+        secure: isHTTPS, // true in production (HTTPS required on Vercel)
         httpOnly: true,
-        maxAge: 24 * 60 * 60 * 1000 // 24 hours
-    }
+        maxAge: 24 * 60 * 60 * 1000, // 24 hours
+        sameSite: sameSiteSetting, // 'lax' for same-domain, 'none' for cross-domain (requires secure: true)
+        path: '/', // Ensure cookie is available for all paths
+        domain: process.env.COOKIE_DOMAIN || undefined // Set if using custom domain
+    },
+    // For serverless environments, we rely on cookie-based sessions
+    // The session data is stored in the cookie itself (signed and encrypted)
+    rolling: true // Reset expiration on activity to keep session alive
 }));
 
 // Store active payment requests (in-memory for quick access, also stored in DB)

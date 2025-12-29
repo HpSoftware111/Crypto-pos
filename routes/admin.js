@@ -23,14 +23,34 @@ router.post('/login', (req, res) => {
         req.session.adminId = admin.id;
         req.session.username = admin.username;
 
-        // Log login action
-        db.logAdminAction(admin.id, 'LOGIN', { username }, req.ip);
+        // Save session explicitly (important for serverless environments like Vercel)
+        req.session.save((err) => {
+            if (err) {
+                console.error('Session save error:', err);
+                return res.status(500).json({ error: 'Failed to create session' });
+            }
 
-        res.json({
-            success: true,
-            admin: {
-                id: admin.id,
-                username: admin.username
+            try {
+                // Log login action
+                db.logAdminAction(admin.id, 'LOGIN', { username }, req.ip);
+
+                res.json({
+                    success: true,
+                    admin: {
+                        id: admin.id,
+                        username: admin.username
+                    }
+                });
+            } catch (logError) {
+                console.error('Error logging admin action:', logError);
+                // Still return success even if logging fails
+                res.json({
+                    success: true,
+                    admin: {
+                        id: admin.id,
+                        username: admin.username
+                    }
+                });
             }
         });
     } catch (error) {
