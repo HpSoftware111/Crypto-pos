@@ -34,7 +34,20 @@ app.use(cors({
     allowedHeaders: ['Content-Type', 'Authorization']
 }));
 app.use(express.json());
-app.use(express.static('public'));
+
+// Handle favicon requests first (browsers automatically request this)
+app.get('/favicon.ico', (req, res) => {
+    const faviconPath = path.join(__dirname, 'public', 'logo.png');
+    res.sendFile(faviconPath, (err) => {
+        if (err) {
+            // If logo.png doesn't exist, send 204 No Content (no error, just no favicon)
+            res.status(204).end();
+        }
+    });
+});
+
+// Serve static files from public directory
+app.use(express.static(path.join(__dirname, 'public')));
 
 // Session configuration - optimized for Vercel/serverless
 app.use(session({
@@ -467,6 +480,20 @@ app.get('/admin/payments', requireAuthHTML, (req, res) => {
 // Serve frontend
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+// 404 handler for undefined routes (must be after all other routes)
+app.use((req, res) => {
+    // If it's an API route, return JSON
+    if (req.path.startsWith('/api')) {
+        return res.status(404).json({ error: 'API endpoint not found' });
+    }
+    // For other routes, try to serve from public or return 404
+    res.status(404).sendFile(path.join(__dirname, 'public', 'index.html'), (err) => {
+        if (err) {
+            res.status(404).send('Page not found');
+        }
+    });
 });
 
 // Error handling middleware
