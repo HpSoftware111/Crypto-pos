@@ -17,7 +17,7 @@ class DatabaseManager {
 
         this.initDatabase();
     }
-
+    // 
     initDatabase() {
         // Try to load from existing file first (if file storage is enabled and file exists)
         if (this.useFileStorage && this.dbPath && fs.existsSync(this.dbPath)) {
