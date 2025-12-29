@@ -26,28 +26,20 @@ const isHTTPS = isProduction || process.env.HTTPS === 'true';
 // 'none' is required for cross-domain but needs secure: true
 const sameSiteSetting = process.env.COOKIE_SAMESITE || (isHTTPS ? 'lax' : 'lax');
 
-// Middleware
+// CORS configuration
+const allowedOrigins = process.env.ALLOWED_ORIGINS 
+    ? process.env.ALLOWED_ORIGINS.split(',').map(origin => origin.trim())
+    : true; // Allow all origins in development, restrict in production
+
 app.use(cors({
-    origin: process.env.ALLOWED_ORIGIN || true,
+    origin: allowedOrigins,
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization']
 }));
+
 app.use(express.json());
-
-// Handle favicon requests first (browsers automatically request this)
-app.get('/favicon.ico', (req, res) => {
-    const faviconPath = path.join(__dirname, 'public', 'logo.png');
-    res.sendFile(faviconPath, (err) => {
-        if (err) {
-            // If logo.png doesn't exist, send 204 No Content (no error, just no favicon)
-            res.status(204).end();
-        }
-    });
-});
-
-// Serve static files from public directory
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static('public'));
 
 // Session configuration - optimized for Vercel/serverless
 app.use(session({
@@ -457,6 +449,37 @@ app.get('/api/health', (req, res) => {
     });
 });
 
+// Session debug endpoint (for troubleshooting - remove or protect in production)
+app.get('/api/debug/session', (req, res) => {
+    if (process.env.NODE_ENV === 'production' && process.env.ENABLE_DEBUG !== 'true') {
+        return res.status(403).json({ error: 'Debug endpoint disabled in production' });
+    }
+
+    res.json({
+        hasSession: !!req.session,
+        sessionId: req.sessionID,
+        sessionData: req.session ? {
+            adminId: req.session.adminId,
+            username: req.session.username
+        } : null,
+        cookies: req.cookies,
+        headers: {
+            cookie: req.headers.cookie ? 'present' : 'missing',
+            'user-agent': req.headers['user-agent'],
+            origin: req.headers.origin,
+            referer: req.headers.referer
+        },
+        protocol: req.protocol,
+        secure: req.secure,
+        hostname: req.hostname,
+        environment: {
+            nodeEnv: process.env.NODE_ENV,
+            vercel: process.env.VERCEL,
+            https: process.env.HTTPS
+        }
+    });
+});
+
 // Admin API routes
 app.use('/api/admin', adminRoutes);
 
@@ -480,20 +503,6 @@ app.get('/admin/payments', requireAuthHTML, (req, res) => {
 // Serve frontend
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
-
-// 404 handler for undefined routes (must be after all other routes)
-app.use((req, res) => {
-    // If it's an API route, return JSON
-    if (req.path.startsWith('/api')) {
-        return res.status(404).json({ error: 'API endpoint not found' });
-    }
-    // For other routes, try to serve from public or return 404
-    res.status(404).sendFile(path.join(__dirname, 'public', 'index.html'), (err) => {
-        if (err) {
-            res.status(404).send('Page not found');
-        }
-    });
 });
 
 // Error handling middleware

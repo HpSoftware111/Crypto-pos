@@ -5,7 +5,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Payment History - Crypto POS</title>
-    <link rel="icon" type="image/png" href="../logo.png">
     <link rel="stylesheet" href="admin.css">
 </head>
 
@@ -74,56 +73,27 @@
 
         // Check authentication
         fetch('/api/admin/auth/status', { credentials: 'include' })
-            .then(res => {
-                if (!res.ok) {
-                    window.location.href = '/admin/login';
-                    return null;
-                }
-                return res.json();
-            })
+            .then(res => res.json())
             .then(data => {
-                if (!data || !data.authenticated) {
+                if (!data.authenticated) {
                     window.location.href = '/admin/login';
                 } else {
                     loadCoins();
                     loadPayments();
                 }
-            })
-            .catch(error => {
-                console.error('Auth check error:', error);
-                window.location.href = '/admin/login';
             });
 
         async function loadCoins() {
             try {
                 const res = await fetch('/api/admin/coins', { credentials: 'include' });
-                
-                if (!res.ok) {
-                    if (res.status === 401) {
-                        window.location.href = '/admin/login';
-                        return;
-                    }
-                    console.error('Failed to load coins:', res.status);
-                    return;
-                }
-                
                 const data = await res.json();
-                
-                if (!data || !data.coins) {
-                    console.error('Invalid coins response format');
-                    return;
-                }
-                
                 const select = document.getElementById('coinFilter');
-                if (select) {
-                    select.innerHTML = '<option value="">All Coins</option>';
-                    data.coins.forEach(coin => {
-                        const option = document.createElement('option');
-                        option.value = coin.id;
-                        option.textContent = `${coin.name} (${coin.symbol})`;
-                        select.appendChild(option);
-                    });
-                }
+                data.coins.forEach(coin => {
+                    const option = document.createElement('option');
+                    option.value = coin.id;
+                    option.textContent = `${coin.name} (${coin.symbol})`;
+                    select.appendChild(option);
+                });
             } catch (error) {
                 console.error('Error loading coins:', error);
             }
@@ -144,21 +114,7 @@
 
             try {
                 const res = await fetch(`/api/admin/payments?${params}`, { credentials: 'include' });
-                
-                if (!res.ok) {
-                    if (res.status === 401) {
-                        window.location.href = '/admin/login';
-                        return;
-                    }
-                    const errorData = await res.json().catch(() => ({ error: 'Failed to load payments' }));
-                    throw new Error(errorData.error || `API error: ${res.status}`);
-                }
-                
                 const data = await res.json();
-
-                if (!data || !data.payments) {
-                    throw new Error('Invalid response format');
-                }
 
                 const tbody = document.getElementById('paymentsTableBody');
                 if (reset) {
@@ -193,15 +149,6 @@
                 }
             } catch (error) {
                 console.error('Error loading payments:', error);
-                const tbody = document.getElementById('paymentsTableBody');
-                if (tbody) {
-                    tbody.innerHTML = `<tr><td colspan="8" style="text-align: center; padding: 40px; color: #d32f2f;">
-                        <strong>Error loading payments:</strong><br>
-                        ${error.message || 'Unknown error occurred'}
-                        <br><br>
-                        <button class="btn btn-primary" onclick="loadPayments(true)">Retry</button>
-                    </td></tr>`;
-                }
             }
         }
 

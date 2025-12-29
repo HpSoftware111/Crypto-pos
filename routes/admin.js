@@ -23,35 +23,23 @@ router.post('/login', (req, res) => {
         req.session.adminId = admin.id;
         req.session.username = admin.username;
 
-        // Save session explicitly (important for serverless environments like Vercel)
+        // Log login action
+        db.logAdminAction(admin.id, 'LOGIN', { username }, req.ip);
+
+        // Explicitly save session (important for serverless environments)
         req.session.save((err) => {
             if (err) {
                 console.error('Session save error:', err);
                 return res.status(500).json({ error: 'Failed to create session' });
             }
 
-            try {
-                // Log login action
-                db.logAdminAction(admin.id, 'LOGIN', { username }, req.ip);
-
-                res.json({
-                    success: true,
-                    admin: {
-                        id: admin.id,
-                        username: admin.username
-                    }
-                });
-            } catch (logError) {
-                console.error('Error logging admin action:', logError);
-                // Still return success even if logging fails
-                res.json({
-                    success: true,
-                    admin: {
-                        id: admin.id,
-                        username: admin.username
-                    }
-                });
-            }
+            res.json({
+                success: true,
+                admin: {
+                    id: admin.id,
+                    username: admin.username
+                }
+            });
         });
     } catch (error) {
         console.error('Login error:', error);
@@ -61,17 +49,44 @@ router.post('/login', (req, res) => {
 
 // Admin logout
 router.post('/logout', requireAuth, (req, res) => {
+    const sessionId = req.sessionID;
+    
     req.session.destroy((err) => {
         if (err) {
+            console.error('Session destroy error:', err);
             return res.status(500).json({ error: 'Logout failed' });
         }
+        
+        // Clear cookie explicitly
+        res.clearCookie('crypto-pos.sid', {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production' || process.env.VERCEL === '1',
+            sameSite: process.env.COOKIE_SAMESITE || 'lax',
+            path: '/'
+        });
+        
         res.json({ success: true });
     });
 });
 
 // Check authentication status
 router.get('/auth/status', (req, res) => {
+    // Debug logging (remove in production if needed)
+    if (process.env.DEBUG_SESSIONS === 'true') {
+        console.log('Session check:', {
+            hasSession: !!req.session,
+            adminId: req.session?.adminId,
+            username: req.session?.username,
+            cookie: req.headers.cookie ? 'present' : 'missing',
+            protocol: req.protocol,
+            secure: req.secure
+        });
+    }
+
     if (req.session && req.session.adminId) {
+        // Touch session to reset expiration (rolling sessions)
+        req.session.touch();
+        
         res.json({
             authenticated: true,
             admin: {

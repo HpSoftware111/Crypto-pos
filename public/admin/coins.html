@@ -5,7 +5,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Coin Management - Crypto POS</title>
-    <link rel="icon" type="image/png" href="../logo.png">
     <link rel="stylesheet" href="admin.css">
 </head>
 
@@ -137,56 +136,22 @@
 
         // Check authentication
         fetch('/api/admin/auth/status', { credentials: 'include' })
-            .then(res => {
-                if (!res.ok) {
-                    // If auth check fails, redirect to login
-                    window.location.href = '/admin/login';
-                    return null;
-                }
-                return res.json();
-            })
+            .then(res => res.json())
             .then(data => {
-                if (!data || !data.authenticated) {
+                if (!data.authenticated) {
                     window.location.href = '/admin/login';
                 } else {
                     loadCoins();
                 }
-            })
-            .catch(error => {
-                console.error('Auth check error:', error);
-                window.location.href = '/admin/login';
             });
 
         async function loadCoins() {
             try {
                 const res = await fetch('/api/admin/coins', { credentials: 'include' });
-                
-                if (!res.ok) {
-                    if (res.status === 401) {
-                        window.location.href = '/admin/login';
-                        return;
-                    }
-                    throw new Error(`Failed to load coins: ${res.status}`);
-                }
-                
                 const data = await res.json();
-                
-                if (!data || !data.coins) {
-                    throw new Error('Invalid response format');
-                }
-                
                 displayCoins(data.coins);
             } catch (error) {
                 console.error('Error loading coins:', error);
-                const tbody = document.getElementById('coinsTableBody');
-                if (tbody) {
-                    tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; padding: 40px; color: #d32f2f;">
-                        <strong>Error loading coins:</strong><br>
-                        ${error.message || 'Unknown error occurred'}
-                        <br><br>
-                        <button class="btn btn-primary" onclick="location.reload()">Retry</button>
-                    </td></tr>`;
-                }
             }
         }
 

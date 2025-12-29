@@ -5,7 +5,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Admin Dashboard - Crypto POS</title>
-    <link rel="icon" type="image/png" href="../logo.png">
     <link rel="stylesheet" href="admin.css">
 </head>
 
@@ -63,24 +62,13 @@
     <script>
         // Check authentication
         fetch('/api/admin/auth/status', { credentials: 'include' })
-            .then(res => {
-                if (!res.ok) {
-                    // If auth check fails, redirect to login
-                    window.location.href = '/admin/login';
-                    return;
-                }
-                return res.json();
-            })
+            .then(res => res.json())
             .then(data => {
-                if (!data || !data.authenticated) {
+                if (!data.authenticated) {
                     window.location.href = '/admin/login';
                 } else {
                     loadDashboard();
                 }
-            })
-            .catch(error => {
-                console.error('Auth check error:', error);
-                window.location.href = '/admin/login';
             });
 
         async function loadDashboard() {
@@ -90,40 +78,16 @@
                     fetch('/api/admin/payments?limit=10', { credentials: 'include' })
                 ]);
 
-                // Check if responses are OK
-                if (!statsRes.ok) {
-                    const errorData = await statsRes.json().catch(() => ({ error: 'Failed to load stats' }));
-                    if (statsRes.status === 401) {
-                        window.location.href = '/admin/login';
-                        return;
-                    }
-                    throw new Error(errorData.error || `Stats API error: ${statsRes.status}`);
-                }
-
-                if (!paymentsRes.ok) {
-                    const errorData = await paymentsRes.json().catch(() => ({ error: 'Failed to load payments' }));
-                    if (paymentsRes.status === 401) {
-                        window.location.href = '/admin/login';
-                        return;
-                    }
-                    throw new Error(errorData.error || `Payments API error: ${paymentsRes.status}`);
-                }
-
                 const stats = await statsRes.json();
                 const paymentsData = await paymentsRes.json();
 
-                // Validate response data
-                if (!stats || !stats.payments) {
-                    throw new Error('Invalid stats response format');
-                }
-
                 // Update stats
-                document.getElementById('totalPayments').textContent = stats.payments.total || 0;
-                document.getElementById('confirmedPayments').textContent = stats.payments.confirmed || 0;
-                document.getElementById('pendingPayments').textContent = stats.payments.pending || 0;
+                document.getElementById('totalPayments').textContent = stats.payments.total;
+                document.getElementById('confirmedPayments').textContent = stats.payments.confirmed;
+                document.getElementById('pendingPayments').textContent = stats.payments.pending;
                 document.getElementById('totalAmount').textContent = formatAmount(stats.payments.totalAmount);
-                document.getElementById('enabledCoins').textContent = stats.coins?.enabled || 0;
-                document.getElementById('totalCoins').textContent = stats.coins?.total || 0;
+                document.getElementById('enabledCoins').textContent = stats.coins.enabled;
+                document.getElementById('totalCoins').textContent = stats.coins.total;
 
                 // Display recent payments
                 const paymentsContainer = document.getElementById('recentPayments');
@@ -142,11 +106,11 @@
                             <tbody>
                                 ${paymentsData.payments.map(p => `
                                     <tr>
-                                        <td>${p.payment_id ? p.payment_id.substring(0, 20) + '...' : 'N/A'}</td>
-                                        <td>${p.symbol || p.coin_name || 'N/A'}</td>
-                                        <td>${p.amount || 0} ${p.symbol || ''}</td>
-                                        <td><span class="status-badge status-${p.status || 'pending'}">${p.status || 'pending'}</span></td>
-                                        <td>${p.created_at ? new Date(p.created_at).toLocaleString() : 'N/A'}</td>
+                                        <td>${p.payment_id.substring(0, 20)}...</td>
+                                        <td>${p.symbol || p.coin_name}</td>
+                                        <td>${p.amount} ${p.symbol || ''}</td>
+                                        <td><span class="status-badge status-${p.status}">${p.status}</span></td>
+                                        <td>${new Date(p.created_at).toLocaleString()}</td>
                                     </tr>
                                 `).join('')}
                             </tbody>
@@ -157,13 +121,6 @@
                 }
             } catch (error) {
                 console.error('Error loading dashboard:', error);
-                const paymentsContainer = document.getElementById('recentPayments');
-                paymentsContainer.innerHTML = `<div style="padding: 40px; text-align: center; color: #d32f2f;">
-                    <strong>Error loading dashboard:</strong><br>
-                    ${error.message || 'Unknown error occurred'}
-                    <br><br>
-                    <button class="btn btn-primary" onclick="location.reload()">Retry</button>
-                </div>`;
             }
         }
 
