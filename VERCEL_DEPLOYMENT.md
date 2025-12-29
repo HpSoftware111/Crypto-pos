@@ -75,10 +75,22 @@ Set these in your Vercel project settings:
    - Navigate to Settings → Environment Variables
    - Add the required variables listed above
 
-5. **Redeploy** after setting environment variables:
+5. **Configure Node.js Version** (Optional but recommended):
+   - Go to Project Settings → General
+   - Under "Build & Development Settings", ensure Node.js version is set to `20.x` (matches package.json)
+   - This ensures consistency between local and Vercel environments
+
+6. **Redeploy** after setting environment variables:
    ```bash
    vercel --prod
    ```
+
+## Build Configuration
+
+The project uses modern Vercel configuration:
+- **Auto-detection**: Vercel automatically detects Node.js projects
+- **No builds field**: Using the modern configuration format (no deprecated `builds` field)
+- **Node.js 20.x**: Specified in `package.json` for consistency
 
 ## Troubleshooting Session Issues
 
