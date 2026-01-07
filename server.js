@@ -8,7 +8,7 @@ const adminRoutes = require('./routes/admin');
 const { requireAuthHTML } = require('./middleware/auth');
 
 const app = express();
-const PORT = 3000;
+const PORT = 4000;
 
 // Initialize database
 const db = getDatabase();

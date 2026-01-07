@@ -1,0 +1,11 @@
+This directory should contain:
+- icon.png (1024x1024) - App icon
+- splash.png (1242x2436) - Splash screen
+- adaptive-icon.png (1024x1024) - Android adaptive icon
+- favicon.png - Web favicon
+- default-coin.png - Default coin icon placeholder
+
+You can generate these using:
+- Icon generators: https://www.appicon.co/, https://icon.kitchen/
+- Or create them manually in your image editor
+
