@@ -82,3 +82,4 @@ The main fix was binding the server to `0.0.0.0` instead of just `localhost`. Th
 
 **Restart your backend server and the app should connect!** 🚀
 
+

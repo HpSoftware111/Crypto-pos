@@ -63,3 +63,4 @@ The build should now complete successfully! 🎉
 
 The QR code will still scan correctly and work with all wallets.
 
+
