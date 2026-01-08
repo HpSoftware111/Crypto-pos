@@ -15,7 +15,25 @@ export const getCoins = async () => {
     return response.data.coins || [];
   } catch (error) {
     console.error('Error fetching coins:', error);
-    throw new Error(error.response?.data?.error || 'Failed to fetch payment methods');
+    
+    // Better error messages
+    if (error.response) {
+      // Server responded with error status
+      const status = error.response.status;
+      const message = error.response.data?.error || error.response.data?.message;
+      
+      if (status === 418) {
+        throw new Error('Server configuration error. Please check backend server.');
+      }
+      
+      throw new Error(message || `Server error (${status}). Please check your backend.`);
+    } else if (error.request) {
+      // Request made but no response received
+      throw new Error('Cannot connect to server. Make sure the backend is running on port 4000.');
+    } else {
+      // Something else happened
+      throw new Error(error.message || 'Failed to fetch payment methods');
+    }
   }
 };
 

@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
-import Clipboard from '@react-native-clipboard/clipboard';
+// import Clipboard from '@react-native-clipboard/clipboard';
+import * as Clipboard from 'expo-clipboard';
+
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, FONT_SIZES } from '../utils/config';
 
@@ -13,7 +15,9 @@ const AddressCopy = ({ address, label = 'Payment Address' }) => {
 
   const handleCopy = async () => {
     try {
-      await Clipboard.setString(address);
+      // await Clipboard.setString(address);
+      await Clipboard.setStringAsync(address);
+
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch (error) {

@@ -450,10 +450,11 @@ app.use((err, req, res, next) => {
     res.status(500).json({ error: 'Internal server error' });
 });
 
-// Start server
-app.listen(PORT, () => {
+// Start server - bind to 0.0.0.0 to allow connections from emulator and network devices
+app.listen(PORT, '0.0.0.0', () => {
     console.log(`🚀 Crypto POS Server running on port ${PORT}`);
     console.log(`📱 Access the POS at http://localhost:${PORT}`);
+    console.log(`📱 Access from Android emulator: http://10.0.2.2:${PORT}`);
     console.log(`🔐 Access the Admin Panel at http://localhost:${PORT}/admin`);
     console.log(`⚠️  Default admin credentials: admin / admin123`);
     console.log(`⚠️  PLEASE CHANGE THE DEFAULT PASSWORD IMMEDIATELY!`);

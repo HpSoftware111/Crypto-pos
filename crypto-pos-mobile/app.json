@@ -14,16 +14,18 @@
     "assetBundlePatterns": [
       "**/*"
     ],
+    "extra": {
+      "eas": {
+        "projectId": "1798e58b-7edd-4223-968d-9ba590c3d49a"
+      }
+    },
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.cryptopos.mobile"
     },
     "android": {
-      "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#2775CA"
-      },
       "package": "com.cryptopos.mobile",
+      "versionCode": 1,
       "permissions": [
         "INTERNET",
         "ACCESS_NETWORK_STATE"
@@ -34,4 +36,3 @@
     }
   }
 }
-

@@ -36,14 +36,28 @@ apiClient.interceptors.response.use(
   (error) => {
     if (error.response) {
       // Server responded with error status
+      const status = error.response.status;
+      const data = error.response.data;
+      
       console.error('[API Error Response]', {
-        status: error.response.status,
-        data: error.response.data,
+        status: status,
+        data: data,
         url: error.config?.url,
+        baseURL: error.config?.baseURL,
       });
+      
+      // Handle specific error codes
+      if (status === 418) {
+        console.error('[418 Error] This usually indicates a server configuration issue');
+      }
     } else if (error.request) {
       // Request made but no response received
-      console.error('[API Network Error]', error.request);
+      console.error('[API Network Error]', {
+        message: 'No response from server',
+        url: error.config?.url,
+        baseURL: error.config?.baseURL,
+        timeout: error.config?.timeout,
+      });
     } else {
       // Something else happened
       console.error('[API Error]', error.message);

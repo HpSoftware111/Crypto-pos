@@ -20,11 +20,6 @@ const QRCodeDisplay = ({ value, size = QR_CODE_SIZE }) => {
           size={size}
           color={COLORS.text}
           backgroundColor={COLORS.surface}
-          logo={require('../../assets/icon.png')}
-          logoSize={size * 0.15}
-          logoBackgroundColor={COLORS.surface}
-          logoMargin={4}
-          logoBorderRadius={8}
         />
       </View>
     </View>

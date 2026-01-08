@@ -7,6 +7,7 @@ import {
   ActivityIndicator,
   RefreshControl,
   Alert,
+  TouchableOpacity,
 } from 'react-native';
 import { useCoins } from '../hooks/useCoins';
 import CoinCard from '../components/CoinCard';
@@ -50,16 +51,27 @@ const PaymentMethodScreen = ({ navigation }) => {
   }
 
   if (error && coins.length === 0) {
+    // Clean up error message - remove "I'm a teapot" or other unusual messages
+    let displayError = error;
+    if (error.includes('teapot') || error.includes('418')) {
+      displayError = 'Cannot connect to server. Please check:\n\n1. Backend server is running on port 4000\n2. API_BASE_URL is correct\n3. Emulator can reach the server';
+    }
+    
     return (
       <View style={styles.centerContainer}>
         <Text style={styles.errorIcon}>⚠️</Text>
         <Text style={styles.errorTitle}>Connection Error</Text>
         <Text style={styles.errorText}>
-          {error || 'Unable to connect to server. Please check your configuration.'}
+          {displayError || 'Unable to connect to server. Please check your configuration.'}
         </Text>
         <Text style={styles.configHint}>
-          Make sure your server is running and API_BASE_URL is correct in src/utils/config.js
+          Make sure your server is running and API_BASE_URL is correct in src/utils/config.js{'\n'}
+          For emulator: Use http://10.0.2.2:4000{'\n'}
+          For physical device: Use your computer's IP address
         </Text>
+        <TouchableOpacity style={styles.retryButton} onPress={refetch}>
+          <Text style={styles.retryButtonText}>Retry Connection</Text>
+        </TouchableOpacity>
       </View>
     );
   }
@@ -174,6 +186,18 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.medium,
     color: COLORS.textSecondary,
     textAlign: 'center',
+  },
+  retryButton: {
+    backgroundColor: COLORS.primary,
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 8,
+    marginTop: 16,
+  },
+  retryButtonText: {
+    color: COLORS.surface,
+    fontSize: FONT_SIZES.medium,
+    fontWeight: '600',
   },
 });
 
